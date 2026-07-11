@@ -175,13 +175,13 @@ Velocity uses a **nuexa-inspired dark monochrome** design system:
 - [x] Phase 12: Template management with Handlebars
 - [x] Phase 13: Delivery reports with stats and CSV export
 - [x] Phase 14: Nuexa theme transformation — custom frameless window, gradient surfaces, monochrome palette
+- [x] Phase 15: Real SMTP connection testing and email sending via Rust backend
+- [x] Phase 16: Real-time send progress bar with elapsed time and ETA
 
 ### In Progress
-- [ ] Phase 15: Real SMTP connection testing and email sending via Rust backend
-- [ ] Phase 16: Real-time delivery tracking with progress updates
+- [ ] Phase 17: Email sending queue with rate limiting and retry logic (Rust)
 
 ### Planned
-- [ ] Phase 17: Email sending queue with rate limiting and retry logic (Rust)
 - [ ] Phase 18: Drag-and-drop CSV/Excel import with field mapping
 - [ ] Phase 19: Campaign scheduling with cron-based automation
 - [ ] Phase 20: Email open/click tracking with pixel and webhook integration
