@@ -70,6 +70,31 @@ src-tauri/            # Rust backend
 
 See `.mimocode/plans/1783755958480-silent-nebula.md` for full breakdown. Seven branches total, merged at the end.
 
+## Tools
+
+### graphify
+
+Use `/graphify` to analyze codebase architecture. Creates a knowledge graph from code files with community detection.
+
+```bash
+/graphify .                    # Analyze current directory
+/graphify query "question"     # Query the graph
+/graphify path "A" "B"         # Find path between concepts
+/graphify explain "Concept"    # Explain a node
+```
+
+After initial run, use `graphify-out/graph.json` for queries. Re-run with `--update` for incremental changes.
+
+### RTK (Rust Token Killer)
+
+CLI proxy that filters command output to save tokens (60-90% savings). Use transparently via hooks — all commands are automatically rewritten.
+
+```bash
+rtk gain              # Show token savings
+rtk gain --history    # Show usage history
+rtk discover          # Analyze for missed opportunities
+```
+
 ## Gotchas
 
 - Tailwind config must include the full Lumina Velocity color palette (50+ colors) from DESIGN.md
