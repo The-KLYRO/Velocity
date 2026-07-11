@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Toast, EditorToolbar, ProgressBar } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
@@ -16,7 +16,7 @@ const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
 export function ComposePage() {
   const { addTemplate } = useTemplateStore();
   const { addCampaign, addBroadcast, fetchCampaigns } = useCampaignStore();
-  const { startSending, stopSending, isSending, incrementProgress, sentCount, failedCount, totalCount, startTime, currentEmail } = useSendingStore();
+  const { startSending, stopSending, isSending, incrementProgress, sentCount, failedCount, totalCount, startTime } = useSendingStore();
   const { recipients, fetchRecipients, addRecipient } = useRecipientStore();
   const { accounts, fetchAccounts } = useSmtpStore();
   const { signature, fetchSettings } = useSettingsStore();
