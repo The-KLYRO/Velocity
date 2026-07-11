@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Campaign,
   CampaignStatus,
@@ -395,6 +396,17 @@ export async function sendBroadcast(req: SendBroadcastRequest): Promise<SendBroa
       recipient_emails: req.recipientEmails,
     },
   });
+}
+
+export interface SendProgress {
+  sent: number;
+  failed: number;
+  total: number;
+  current: string;
+}
+
+export function onSendProgress(cb: (p: SendProgress) => void): Promise<UnlistenFn> {
+  return listen<SendProgress>("send-progress", (e) => cb(e.payload));
 }
 
 // ─── Reports Commands ────────────────────────────────────────────
