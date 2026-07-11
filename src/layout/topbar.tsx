@@ -42,7 +42,7 @@ export function TopBar() {
     >
       <div data-tauri-drag-region style={{ fontSize: 13, letterSpacing: "0.2px", color: "var(--text1)" }}>{title}</div>
 
-      <div data-tauri-drag-region="false" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button data-tauri-drag-region="false" className="pillBtn" type="button" aria-label="Search">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
         </button>
