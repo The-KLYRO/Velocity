@@ -9,7 +9,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            app_name: "Lumina Velocity".to_string(),
+            app_name: "Velocity".to_string(),
             version: "0.1.0".to_string(),
         }
     }

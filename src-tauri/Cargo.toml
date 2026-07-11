@@ -1,12 +1,12 @@
 [package]
 name = "velocity"
 version = "0.1.0"
-description = "Lumina Velocity - Bulk Email Management"
+description = "Velocity - Bulk Email Management"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "lumina_velocity_lib"
+name = "velocity_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -29,3 +29,6 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 dirs = "5"
+aes-gcm = "0.10"
+base64 = "0.22"
+sha2 = "0.10"

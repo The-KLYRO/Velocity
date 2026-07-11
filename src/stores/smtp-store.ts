@@ -8,7 +8,7 @@ interface SmtpState {
   isLoading: boolean;
   error: string | null;
   fetchAccounts: () => Promise<void>;
-  addAccount: (account: SmtpAccount) => Promise<SmtpAccount | null>;
+  addAccount: (account: Partial<SmtpAccount> & { email: string; host: string; password?: string }) => Promise<SmtpAccount | null>;
   removeAccount: (id: string) => Promise<void>;
   setActiveAccount: (account: SmtpAccount | null) => void;
   updateAccount: (id: string, updates: Partial<SmtpAccount>) => Promise<void>;

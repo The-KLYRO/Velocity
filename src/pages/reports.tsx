@@ -14,10 +14,10 @@ export function ReportsPage() {
     api.fetchDashboardStats().then(setStats).catch(() => {});
   }, [fetchCampaigns]);
 
-  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.sentCount, 0);
-  const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.totalSent, 0);
+  const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalSent, 0);
   const deliveryRate = totalRecipients > 0 ? ((totalSent / totalRecipients) * 100).toFixed(1) : "0";
-  const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
+  const completedCampaigns = campaigns.filter((c) => c.status === "archived").length;
 
   const handleExport = async () => {
     try {

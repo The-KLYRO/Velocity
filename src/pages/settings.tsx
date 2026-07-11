@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
-import { Button, Toast } from "../components/ui";
+import { Button, Input, Select, Toast } from "../components/ui";
 import { useSettingsStore } from "../stores/settings-store";
+import { useSmtpStore } from "../stores/smtp-store";
+import { getSmtpAccountPassword } from "../lib/tauri-api";
+import type { SmtpEncryption } from "../types";
+
+const encryptionOptions = [
+  { value: "tls", label: "TLS/SSL" },
+  { value: "starttls", label: "STARTTLS" },
+  { value: "none", label: "None" },
+];
 
 export function SettingsPage() {
   const {
@@ -10,15 +19,34 @@ export function SettingsPage() {
     toggleNotification, toggleTracking, setSignature, saveAll,
   } = useSettingsStore();
 
+  const {
+    accounts, fetchAccounts, addAccount, removeAccount, updateAccount, testConnection,
+  } = useSmtpStore();
+
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
   const [localDelay, setLocalDelay] = useState(String(delayMs));
   const [localRetry, setLocalRetry] = useState(String(retryCount));
   const [localLimit, setLocalLimit] = useState(String(dailyLimit));
   const [localBatch, setLocalBatch] = useState(String(batchSize));
 
+  const [newAccount, setNewAccount] = useState({
+    email: "",
+    password: "",
+    host: "",
+    port: "587",
+    encryption: "starttls" as SmtpEncryption,
+    delayMs: "1000",
+    retryCount: "3",
+    dailyLimit: "500",
+  });
+  const [testResults, setTestResults] = useState<Record<string, { testing: boolean; result: "success" | "error" | null }>>({});
+
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchAccounts();
+  }, [fetchSettings, fetchAccounts]);
 
   useEffect(() => {
     setLocalDelay(String(delayMs));
@@ -27,14 +55,71 @@ export function SettingsPage() {
     setLocalBatch(String(batchSize));
   }, [delayMs, retryCount, dailyLimit, batchSize]);
 
+  const showToastMessage = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
   const handleSave = async () => {
     setDelayMs(Number(localDelay) || 1000);
     setRetryCount(Number(localRetry) || 3);
     setDailyLimit(Number(localLimit) || 500);
     setBatchSize(Number(localBatch) || 50);
     await saveAll();
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    showToastMessage("Settings saved");
+  };
+
+  const handleTestConnection = async (account: { id: string; email: string; host: string; port: number }) => {
+    setTestResults((prev) => ({ ...prev, [account.id]: { testing: true, result: null } }));
+    try {
+      const password = await getSmtpAccountPassword(account.id);
+      const result = await testConnection(account.email, password, account.host, account.port);
+      const success = result.connected;
+      setTestResults((prev) => ({ ...prev, [account.id]: { testing: false, result: success ? "success" : "error" } }));
+      if (success) await updateAccount(account.id, { isConnected: true });
+      showToastMessage(result.message, success ? "success" : "error");
+    } catch (e) {
+      setTestResults((prev) => ({ ...prev, [account.id]: { testing: false, result: "error" } }));
+      showToastMessage(`Could not retrieve password: ${String(e)}`, "error");
+    }
+  };
+
+  const handleAddAccount = async () => {
+    if (!newAccount.email || !newAccount.host) return;
+    const saved = await addAccount({
+      email: newAccount.email,
+      password: newAccount.password,
+      host: newAccount.host,
+      port: Number(newAccount.port) || 587,
+      encryption: newAccount.encryption,
+      dailyLimit: Number(newAccount.dailyLimit) || 500,
+      delayMs: Number(newAccount.delayMs) || 1000,
+      retryCount: Number(newAccount.retryCount) || 3,
+      isConnected: false,
+    });
+    if (saved) {
+      await fetchAccounts();
+      setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
+      showToastMessage("Account added successfully");
+
+      try {
+        const result = await testConnection(newAccount.email, newAccount.password, newAccount.host, Number(newAccount.port) || 587);
+        if (result.connected) {
+          await updateAccount(saved.id, { isConnected: true });
+          await fetchAccounts();
+          showToastMessage("Account connected successfully");
+        }
+      } catch {
+        // connection test failed silently — account stays disconnected
+      }
+    }
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    await removeAccount(id);
+    showToastMessage("Account deleted", "info");
   };
 
   return (
@@ -45,6 +130,116 @@ export function SettingsPage() {
           <div style={{ fontSize: 12, color: "var(--text2)" }}>Configure your sending preferences</div>
         </div>
 
+        {/* SMTP Accounts */}
+        <div className="card card--pad" style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>SMTP Accounts</div>
+
+          {accounts.map((account) => {
+            const test = testResults[account.id];
+            return (
+              <div key={account.id} style={{ marginBottom: 16, padding: 16, borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{account.email}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: account.isConnected ? "var(--good)" : "var(--bad)" }} />
+                    <span style={{ color: account.isConnected ? "var(--good)" : "var(--bad)" }}>
+                      {account.isConnected ? "Connected" : "Disconnected"}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Input label="Email Address" type="email" defaultValue={account.email} />
+                  <Input label="SMTP Host" defaultValue={account.host} />
+                  <Input label="Port" type="number" defaultValue={String(account.port)} />
+                  <Select
+                    label="Encryption"
+                    value={account.encryption}
+                    onChange={() => {}}
+                    options={encryptionOptions}
+                  />
+                  <Input label="Delay Between Emails (ms)" type="number" defaultValue={String(account.delayMs)} />
+                  <Input label="Retry Count" type="number" defaultValue={String(account.retryCount)} />
+                  <Input label="Daily Send Limit" type="number" defaultValue={String(account.dailyLimit)} />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--stroke0)" }}>
+                  <Button variant="secondary" icon="wifi_find" onClick={() => handleTestConnection(account)} disabled={test?.testing}>
+                    {test?.testing ? "Testing..." : "Test Connection"}
+                  </Button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button variant="danger" onClick={() => handleDeleteAccount(account.id)}>Delete</Button>
+                    <Button onClick={() => showToastMessage("Changes saved")}>Save Changes</Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12 }}>Add New Account</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Input
+                label="Email Address"
+                type="email"
+                placeholder="your-email@company.com"
+                value={newAccount.email}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, email: e.target.value }))}
+              />
+              <Input
+                label="App Password"
+                type="password"
+                placeholder="xxxx xxxx xxxx xxxx"
+                value={newAccount.password}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, password: e.target.value }))}
+              />
+              <Input
+                label="SMTP Host"
+                placeholder="smtp.company.com"
+                value={newAccount.host}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, host: e.target.value }))}
+              />
+              <Input
+                label="Port"
+                type="number"
+                placeholder="465"
+                value={newAccount.port}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, port: e.target.value }))}
+              />
+              <Select
+                label="Encryption"
+                value={newAccount.encryption}
+                onChange={(val) => setNewAccount((prev) => ({ ...prev, encryption: val as SmtpEncryption }))}
+                options={encryptionOptions}
+              />
+              <Input
+                label="Delay Between Emails (ms)"
+                type="number"
+                value={newAccount.delayMs}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, delayMs: e.target.value }))}
+              />
+              <Input
+                label="Retry Count"
+                type="number"
+                value={newAccount.retryCount}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, retryCount: e.target.value }))}
+              />
+              <Input
+                label="Daily Send Limit"
+                type="number"
+                value={newAccount.dailyLimit}
+                onChange={(e) => setNewAccount((prev) => ({ ...prev, dailyLimit: e.target.value }))}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <Button onClick={handleAddAccount} disabled={!newAccount.email || !newAccount.host}>
+                Add Account
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Sending Defaults */}
         <div className="card card--pad" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Sending Defaults</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -71,6 +266,7 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* Notifications */}
         <div className="card card--pad" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Notifications</div>
           <div style={{ display: "grid", gap: 10 }}>
@@ -93,13 +289,14 @@ export function SettingsPage() {
                     onChange={() => toggleNotification(item.key)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 rounded-full peer peer-checked:bg-[var(--text0)] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" style={{ background: "var(--panel2)" }} />
+                  <div className="w-11 h-6 rounded-full bg-[var(--panel2)] peer-checked:bg-[var(--good)] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" />
                 </label>
               </div>
             ))}
           </div>
         </div>
 
+        {/* Email Signature */}
         <div className="card card--pad" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Email Signature</div>
           <textarea
@@ -109,6 +306,7 @@ export function SettingsPage() {
           />
         </div>
 
+        {/* Tracking */}
         <div className="card card--pad" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Tracking</div>
           <div style={{ display: "grid", gap: 10 }}>
@@ -130,7 +328,7 @@ export function SettingsPage() {
                     onChange={() => toggleTracking(item.key)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 rounded-full peer peer-checked:bg-[var(--text0)] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" style={{ background: "var(--panel2)" }} />
+                  <div className="w-11 h-6 rounded-full bg-[var(--panel2)] peer-checked:bg-[var(--good)] after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" />
                 </label>
               </div>
             ))}
@@ -144,7 +342,7 @@ export function SettingsPage() {
       </div>
 
       {showToast && (
-        <Toast message="Settings saved" description="Your preferences have been updated." type="success" onClose={() => setShowToast(false)} />
+        <Toast message={toastMessage} type={toastType} onClose={() => setShowToast(false)} />
       )}
     </div>
   );

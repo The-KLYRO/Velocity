@@ -5,10 +5,11 @@ pub mod templates;
 pub mod reports;
 pub mod settings;
 pub mod lists;
+pub mod sending;
 
 use tauri::command;
 
 #[command]
 pub fn greet(name: &str) -> String {
-    format!("Hello, {}! Welcome to Lumina Velocity.", name)
+    format!("Hello, {}! Welcome to Velocity.", name)
 }

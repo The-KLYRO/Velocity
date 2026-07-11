@@ -19,7 +19,7 @@ impl AppState {
         let db_path = dirs::data_local_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("velocity")
-            .join("lumina.db");
+            .join("velocity.db");
 
         std::fs::create_dir_all(db_path.parent().unwrap()).ok();
 

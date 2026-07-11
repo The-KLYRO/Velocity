@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Campaign,
   CampaignStatus,
+  Broadcast,
+  BroadcastStatus,
   Recipient,
   RecipientStatus,
   Template,
@@ -15,22 +17,26 @@ import type {
 interface CampaignBackend {
   id: string;
   name: string;
+  description: string | null;
+  recipient_list_id: string | null;
   status: string;
-  template_id: string | null;
+  broadcast_count: number;
+  last_broadcast_at: string | null;
+  total_sent: number;
   created_at: string;
-  sent_count: number;
-  total_count: number;
 }
 
 function mapCampaign(c: CampaignBackend): Campaign {
   return {
     id: c.id,
     name: c.name,
+    description: c.description ?? undefined,
+    recipientListId: c.recipient_list_id ?? undefined,
     status: c.status as CampaignStatus,
-    templateId: c.template_id ?? undefined,
+    broadcastCount: c.broadcast_count,
+    lastBroadcastAt: c.last_broadcast_at ? new Date(c.last_broadcast_at) : undefined,
+    totalSent: c.total_sent,
     createdAt: new Date(c.created_at),
-    sentCount: c.sent_count,
-    totalCount: c.total_count,
   };
 }
 
@@ -41,31 +47,81 @@ export async function fetchCampaigns(): Promise<Campaign[]> {
 
 export async function createCampaign(
   name: string,
-  templateId?: string,
-  totalCount?: number
+  description?: string,
+  recipientListId?: string
 ): Promise<Campaign> {
   const data = await invoke<CampaignBackend>("create_campaign", {
     name,
-    templateId: templateId ?? null,
-    totalCount: totalCount ?? 0,
+    description: description ?? null,
+    recipientListId: recipientListId ?? null,
   });
   return mapCampaign(data);
 }
 
-export async function startCampaign(id: string): Promise<void> {
-  await invoke("start_campaign", { id });
-}
-
-export async function pauseCampaign(id: string): Promise<void> {
-  await invoke("pause_campaign", { id });
-}
-
-export async function resumeCampaign(id: string): Promise<void> {
-  await invoke("resume_campaign", { id });
+export async function updateCampaign(id: string, updates: Partial<Campaign>): Promise<void> {
+  await invoke("update_campaign", { id, updates });
 }
 
 export async function deleteCampaign(id: string): Promise<void> {
   await invoke("delete_campaign", { id });
+}
+
+// ─── Broadcast Commands ──────────────────────────────────────────
+
+interface BroadcastBackend {
+  id: string;
+  campaign_id: string;
+  subject: string;
+  template_id: string | null;
+  status: string;
+  sent_count: number;
+  total_count: number;
+  created_at: string;
+}
+
+function mapBroadcast(b: BroadcastBackend): Broadcast {
+  return {
+    id: b.id,
+    campaignId: b.campaign_id,
+    subject: b.subject,
+    templateId: b.template_id ?? undefined,
+    status: b.status as BroadcastStatus,
+    sentCount: b.sent_count,
+    totalCount: b.total_count,
+    createdAt: new Date(b.created_at),
+  };
+}
+
+export async function fetchBroadcasts(campaignId: string): Promise<Broadcast[]> {
+  const data = await invoke<BroadcastBackend[]>("get_broadcasts", { campaignId });
+  return data.map(mapBroadcast);
+}
+
+export async function createBroadcast(broadcast: Omit<Broadcast, "id" | "createdAt">): Promise<Broadcast> {
+  const data = await invoke<BroadcastBackend>("create_broadcast", {
+    campaignId: broadcast.campaignId,
+    subject: broadcast.subject,
+    templateId: broadcast.templateId ?? null,
+    totalCount: broadcast.totalCount,
+  });
+  return mapBroadcast(data);
+}
+
+export async function startBroadcast(id: string): Promise<void> {
+  await invoke("start_broadcast", { id });
+}
+
+export async function pauseBroadcast(id: string): Promise<void> {
+  await invoke("pause_broadcast", { id });
+}
+
+export async function resumeBroadcast(id: string): Promise<void> {
+  await invoke("resume_broadcast", { id });
+}
+
+export async function getLastBroadcast(campaignId: string): Promise<Broadcast | null> {
+  const data = await invoke<BroadcastBackend | null>("get_last_broadcast", { campaignId });
+  return data ? mapBroadcast(data) : null;
 }
 
 // ─── Recipient Commands ──────────────────────────────────────────
@@ -257,17 +313,20 @@ export async function fetchSmtpAccounts(): Promise<SmtpAccount[]> {
 }
 
 export async function saveSmtpAccount(
-  account: Partial<SmtpAccount> & { email: string; host: string }
+  account: Partial<SmtpAccount> & { email: string; host: string; password?: string }
 ): Promise<SmtpAccount> {
+  const cleanPassword = account.password?.replace(/\s/g, "") ?? null;
   const data = await invoke<SmtpAccountBackend>("save_smtp_account", {
     id: account.id ?? null,
     email: account.email,
+    password: cleanPassword,
     host: account.host,
     port: account.port ?? 587,
     encryption: account.encryption ?? "starttls",
     dailyLimit: account.dailyLimit ?? 500,
     delayMs: account.delayMs ?? 1000,
     retryCount: account.retryCount ?? 3,
+    isConnected: account.isConnected ?? false,
   });
   return mapSmtpAccount(data);
 }
@@ -293,6 +352,49 @@ export async function testSmtpConnection(
     "test_smtp_connection",
     { email, password, host, port }
   );
+}
+
+export async function getSmtpAccountPassword(id: string): Promise<string> {
+  return invoke<string>("get_smtp_account_password", { id });
+}
+
+// ─── Sending Commands ─────────────────────────────────────────────
+
+export interface SendBroadcastRequest {
+  campaignId: string;
+  broadcastId: string;
+  subject: string;
+  bodyHtml: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpEmail: string;
+  smtpPassword: string;
+  smtpEncryption: string;
+  recipientEmails: string[];
+}
+
+export interface SendBroadcastResult {
+  total: number;
+  sent: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function sendBroadcast(req: SendBroadcastRequest): Promise<SendBroadcastResult> {
+  return invoke<SendBroadcastResult>("send_broadcast", {
+    req: {
+      campaign_id: req.campaignId,
+      broadcast_id: req.broadcastId,
+      subject: req.subject,
+      body_html: req.bodyHtml,
+      smtp_host: req.smtpHost,
+      smtp_port: req.smtpPort,
+      smtp_email: req.smtpEmail,
+      smtp_password: req.smtpPassword,
+      smtp_encryption: req.smtpEncryption,
+      recipient_emails: req.recipientEmails,
+    },
+  });
 }
 
 // ─── Reports Commands ────────────────────────────────────────────

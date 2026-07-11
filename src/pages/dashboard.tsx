@@ -37,8 +37,8 @@ function OverviewTab() {
   }, [fetchCampaigns, fetchAccounts]);
 
   const activeAccount = accounts.find((a) => a.isConnected) ?? accounts[0] ?? null;
-  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.sentCount, 0);
-  const totalTarget = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.totalSent, 0);
+  const totalTarget = campaigns.reduce((sum, c) => sum + c.totalSent, 0);
   const deliveryRate = totalTarget > 0 ? ((totalSent / totalTarget) * 100).toFixed(1) : "0";
   const quotaUsed = sending.isSending ? sending.sentCount : totalSent;
   const dailyLimit = activeAccount?.dailyLimit ?? 500;
@@ -49,23 +49,23 @@ function OverviewTab() {
     .slice(0, 3)
     .map((c) => ({
       event: c.name,
-      target: `${c.totalCount.toLocaleString()} contacts`,
-      status: c.status === "completed" ? "completed" : c.status === "failed" ? "failed" : "active",
+      target: `${c.totalSent.toLocaleString()} contacts`,
+      status: c.status === "active" ? "active" : "paused",
       time: c.createdAt.toLocaleDateString(),
     }));
 
   const runningCampaigns = campaigns.filter(
-    (c) => c.status === "running" || c.status === "paused"
+    (c) => c.status === "active" || c.status === "paused"
   );
 
   const queueDisplay = runningCampaigns.map((c) => {
     const campaignQueueItems = queueItems.filter((q) => q.campaignId === c.id);
     const hasPending = campaignQueueItems.some((q) => q.status === "pending");
-    const progress = c.totalCount > 0 ? Math.round((c.sentCount / c.totalCount) * 100) : 0;
+    const progress = c.totalSent > 0 ? 100 : 0;
     return {
       name: c.name,
-      sent: c.sentCount,
-      total: c.totalCount,
+      sent: c.totalSent,
+      total: c.totalSent,
       progress,
       waiting: c.status === "paused" || hasPending,
     };
@@ -231,10 +231,10 @@ function AnalyticsTab() {
     api.fetchDashboardStats().then(setStats).catch(() => {});
   }, [fetchCampaigns]);
 
-  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.sentCount, 0);
-  const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.totalSent, 0);
+  const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalSent, 0);
   const deliveryRate = totalRecipients > 0 ? ((totalSent / totalRecipients) * 100).toFixed(1) : "0";
-  const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
+  const completedCampaigns = campaigns.filter((c) => c.status === "archived").length;
 
   const handleExport = async () => {
     try {
