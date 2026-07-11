@@ -7,15 +7,6 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
-const variants = {
-  primary:
-    "bg-primary text-on-primary hover:brightness-110 shadow-lg shadow-primary/20",
-  secondary:
-    "border border-glass-stroke text-on-surface hover:bg-surface-bright transition-all",
-  ghost: "text-on-surface-variant hover:text-on-surface hover:bg-surface-bright/10 transition-colors",
-  danger: "border border-error/30 text-error hover:bg-error/5 transition-all",
-};
-
 const sizes = {
   sm: "px-3 py-1.5 text-label-sm",
   md: "px-4 py-2 text-label-md",
@@ -32,10 +23,11 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all active:scale-95 ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`pillBtn transition-all active:scale-95 ${sizes[size]} ${className}`}
+      type="button"
       {...props}
     >
-      {icon && <span className="material-symbols-outlined text-[18px]">{icon}</span>}
+      {icon && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>}
       {children}
     </button>
   );

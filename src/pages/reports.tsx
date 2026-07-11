@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { TopBar } from "../layout/topbar";
-import { GlassCard, StatCard } from "../components/ui";
+import { StatCard } from "../components/ui";
 import { useCampaignStore } from "../stores/campaign-store";
 
 const mockLogs = [
@@ -37,116 +36,94 @@ export function ReportsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <TopBar title="Reports & Analytics" searchPlaceholder="Search logs..." />
-
-      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-headline-lg text-headline-lg text-on-surface">Analytics Overview</h3>
-              <p className="text-label-md text-on-surface-variant">Track your campaign performance</p>
-            </div>
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 border border-glass-stroke rounded-xl text-label-md hover:bg-surface-bright transition-all"
-            >
-              <span className="material-symbols-outlined text-lg">download</span>
-              Export Report
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StatCard label="Total Sent" value={stats.totalSent.toLocaleString()} icon="send" />
-            <StatCard label="Delivery Rate" value={`${stats.deliveryRate}%`} icon="check_circle" />
-            <StatCard label="Active Campaigns" value={String(stats.totalCampaigns - stats.completedCampaigns)} icon="campaign" />
-            <StatCard label="Completed" value={String(stats.completedCampaigns)} icon="task_alt" />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <GlassCard>
-              <h4 className="font-headline-md text-on-surface mb-6">Delivery Trends</h4>
-              <div className="h-48 relative">
-                <svg className="w-full h-full" viewBox="0 0 400 150">
-                  <defs>
-                    <linearGradient id="lineGrad" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="rgba(173, 198, 255, 0.3)" />
-                      <stop offset="100%" stopColor="transparent" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M0,120 Q50,100 100,80 T200,60 T300,40 T400,20" fill="none" stroke="#adc6ff" strokeWidth="2" />
-                  <path d="M0,120 Q50,100 100,80 T200,60 T300,40 T400,20 L400,150 L0,150 Z" fill="url(#lineGrad)" />
-                </svg>
-              </div>
-            </GlassCard>
-
-            <GlassCard>
-              <h4 className="font-headline-md text-on-surface mb-6">Engagement Breakdown</h4>
-              <div className="h-48 flex items-center justify-center">
-                <svg viewBox="0 0 100 100" className="w-40 h-40">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#2a2a2a" strokeWidth="8" />
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#adc6ff" strokeWidth="8" strokeDasharray="106.8 144.5" strokeDashoffset="0" transform="rotate(-90 50 50)" />
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#ddb7ff" strokeWidth="8" strokeDasharray="53.4 197.9" strokeDashoffset="-106.8" transform="rotate(-90 50 50)" />
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#ffb786" strokeWidth="8" strokeDasharray="26.7 224.6" strokeDashoffset="-160.2" transform="rotate(-90 50 50)" />
-                </svg>
-              </div>
-              <div className="flex justify-center gap-6 mt-4">
-                <div className="flex items-center gap-2 text-label-sm">
-                  <span className="w-3 h-3 rounded-full bg-primary" />
-                  <span className="text-on-surface-variant">Delivered (42%)</span>
-                </div>
-                <div className="flex items-center gap-2 text-label-sm">
-                  <span className="w-3 h-3 rounded-full bg-secondary" />
-                  <span className="text-on-surface-variant">Opened (21%)</span>
-                </div>
-                <div className="flex items-center gap-2 text-label-sm">
-                  <span className="w-3 h-3 rounded-full bg-tertiary" />
-                  <span className="text-on-surface-variant">Clicked (10%)</span>
-                </div>
-              </div>
-            </GlassCard>
-          </div>
-
-          <GlassCard>
-            <div className="flex items-center justify-between mb-6">
-              <h4 className="font-headline-md text-on-surface">Recent Activity Logs</h4>
-              <button className="text-primary text-label-sm hover:underline">View All</button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-separate border-spacing-y-2">
-                <thead>
-                  <tr className="text-label-sm text-outline uppercase tracking-widest">
-                    <th className="px-4 py-2 font-medium">Campaign</th>
-                    <th className="px-4 py-2 font-medium">Recipient</th>
-                    <th className="px-4 py-2 font-medium">Event</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockLogs.map((log, i) => (
-                    <tr key={i} className="hover:bg-surface-elevated transition-all rounded-lg">
-                      <td className="px-4 py-3 font-label-md">{log.campaign}</td>
-                      <td className="px-4 py-3 text-on-surface-variant font-label-md">{log.recipient}</td>
-                      <td className="px-4 py-3 font-label-md">{log.event}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                          log.status === "completed" ? "bg-green-500/10 border-green-500/20 text-green-400" :
-                          log.status === "active" ? "bg-green-500/10 border-green-500/20 text-green-400" :
-                          log.status === "failed" ? "bg-error/10 border-error/20 text-error" :
-                          "bg-surface-bright/30 border-glass-stroke text-on-surface-variant"
-                        }`}>
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-label-sm text-on-surface-variant">{log.time}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <div className="h2">Analytics Overview</div>
+          <div style={{ fontSize: 12, color: "var(--text2)" }}>Track your campaign performance</div>
         </div>
+        <button className="pillBtn" onClick={handleExport} type="button">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
+          Export Report
+        </button>
+      </div>
+
+      <div className="kpiRow">
+        <StatCard label="Total Sent" value={stats.totalSent.toLocaleString()} icon="send" />
+        <StatCard label="Delivery Rate" value={`${stats.deliveryRate}%`} icon="check_circle" />
+        <StatCard label="Active Campaigns" value={String(stats.totalCampaigns - stats.completedCampaigns)} icon="campaign" />
+        <StatCard label="Completed" value={String(stats.completedCampaigns)} icon="task_alt" />
+      </div>
+
+      <div className="gridBottom">
+        <div className="card card--pad">
+          <div className="panelTitle">Delivery Trends</div>
+          <div style={{ height: 180, position: "relative" }}>
+            <svg width="100%" height="100%" viewBox="0 0 400 150">
+              <defs>
+                <linearGradient id="lineGradReport" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.15)" />
+                  <stop offset="100%" stopColor="transparent" />
+                </linearGradient>
+              </defs>
+              <path d="M0,120 Q50,100 100,80 T200,60 T300,40 T400,20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+              <path d="M0,120 Q50,100 100,80 T200,60 T300,40 T400,20 L400,150 L0,150 Z" fill="url(#lineGradReport)" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="card card--pad">
+          <div className="panelTitle">Engagement Breakdown</div>
+          <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg viewBox="0 0 100 100" style={{ width: 140, height: 140 }}>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--panel2)" strokeWidth="8" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--text0)" strokeWidth="8" strokeDasharray="106.8 144.5" strokeDashoffset="0" transform="rotate(-90 50 50)" opacity="0.6" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--text1)" strokeWidth="8" strokeDasharray="53.4 197.9" strokeDashoffset="-106.8" transform="rotate(-90 50 50)" opacity="0.5" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--warn)" strokeWidth="8" strokeDasharray="26.7 224.6" strokeDashoffset="-160.2" transform="rotate(-90 50 50)" opacity="0.6" />
+            </svg>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 20, marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text0)", opacity: 0.6 }} />
+              <span style={{ color: "var(--text2)" }}>Delivered (42%)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text1)", opacity: 0.5 }} />
+              <span style={{ color: "var(--text2)" }}>Opened (21%)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn)", opacity: 0.6 }} />
+              <span style={{ color: "var(--text2)" }}>Clicked (10%)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card card--pad" style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="panelTitle" style={{ marginBottom: 0 }}>Recent Activity Logs</div>
+          <span style={{ fontSize: 11, color: "var(--text2)", cursor: "pointer" }}>View All</span>
+        </div>
+        <div className="historyHeader">
+          <div></div>
+          <div>Campaign</div>
+          <div>Recipient</div>
+          <div>Event</div>
+          <div>Status</div>
+        </div>
+        {mockLogs.map((log, i) => (
+          <div className="historyRow" key={i}>
+            <div style={{ width: 40 }} />
+            <div className="cellMain">{log.campaign}</div>
+            <div className="cellSub" style={{ fontSize: 12 }}>{log.recipient}</div>
+            <div className="cellSub" style={{ fontSize: 12 }}>{log.event}</div>
+            <div>
+              <span className={`status ${log.status === "completed" ? "status--ok" : log.status === "active" ? "status--warn" : log.status === "failed" ? "status--bad" : ""}`}>
+                {log.status}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

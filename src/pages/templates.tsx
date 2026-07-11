@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { TopBar } from "../layout/topbar";
-import { GlassCard, Button, Modal, Input } from "../components/ui";
+import { Modal, Input } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
 import type { Template } from "../types";
 
@@ -53,86 +52,69 @@ export function TemplatesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <TopBar title="Templates" searchPlaceholder="Search templates..." />
-
-      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-headline-lg text-headline-lg text-on-surface">Email Templates</h3>
-              <p className="text-label-md text-on-surface-variant">Manage your email templates for campaigns</p>
-            </div>
-            <Button icon="add" onClick={openCreate}>Create Template</Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {templates.map((template) => (
-              <GlassCard key={template.id} hover className="flex flex-col gap-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                      <span className="material-symbols-outlined">description</span>
-                    </div>
-                    <div>
-                      <h4 className="font-headline-md text-on-surface">{template.name}</h4>
-                      <p className="text-label-sm text-on-surface-variant">
-                        {Math.floor((Date.now() - template.createdAt.getTime()) / 86400000)} days ago
-                      </p>
-                    </div>
-                  </div>
-                  <button className="p-1.5 text-on-surface-variant hover:text-on-surface">
-                    <span className="material-symbols-outlined">more_vert</span>
-                  </button>
-                </div>
-
-                <div className="p-3 rounded-xl bg-surface-container-high/40 border border-glass-stroke">
-                  <p className="text-label-sm text-on-surface-variant">Subject</p>
-                  <p className="text-label-md text-on-surface mt-1">{template.subject}</p>
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-glass-stroke">
-                  <div className="flex items-center gap-2 text-label-sm text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[16px]">data_object</span>
-                    {template.variables.length} variables
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => openEdit(template)}
-                      className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">edit</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(template.bodyHtml);
-                      }}
-                      className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">content_copy</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(template.id)}
-                      className="p-2 hover:bg-error/10 hover:text-error rounded-lg transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
-                  </div>
-                </div>
-              </GlassCard>
-            ))}
-
-            <button
-              onClick={openCreate}
-              className="group rounded-2xl border-2 border-dashed border-glass-stroke hover:border-primary/50 flex flex-col items-center justify-center gap-4 transition-all hover:bg-primary/5 p-6 min-h-[200px]"
-            >
-              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center group-hover:scale-110 transition-transform">
-                <span className="material-symbols-outlined text-2xl text-on-surface-variant group-hover:text-primary">add</span>
-              </div>
-              <p className="font-headline-md text-on-surface">New Template</p>
-            </button>
-          </div>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <div className="h2">Email Templates</div>
+          <div style={{ fontSize: 12, color: "var(--text2)" }}>Manage your email templates for campaigns</div>
         </div>
+        <button className="pillBtn" onClick={openCreate} type="button">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+          Create Template
+        </button>
+      </div>
+
+      <div className="kpiRow" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        {templates.map((template) => (
+          <div key={template.id} className="card card--pad" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: "var(--text1)" }}>description</span>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{template.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text2)" }}>
+                    {Math.floor((Date.now() - template.createdAt.getTime()) / 86400000)} days ago
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)" }}>
+              <div style={{ fontSize: 10, color: "var(--text2)" }}>Subject</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{template.subject}</div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid var(--stroke0)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text2)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>data_object</span>
+                {template.variables.length} variables
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => openEdit(template)} style={{ background: "none", border: "none", color: "var(--text1)", cursor: "pointer", padding: 6, borderRadius: 8 }} type="button">
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span>
+                </button>
+                <button onClick={() => navigator.clipboard.writeText(template.bodyHtml)} style={{ background: "none", border: "none", color: "var(--text1)", cursor: "pointer", padding: 6, borderRadius: 8 }} type="button">
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span>
+                </button>
+                <button onClick={() => handleDelete(template.id)} style={{ background: "none", border: "none", color: "var(--bad)", cursor: "pointer", padding: 6, borderRadius: 8 }} type="button">
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <button
+          onClick={openCreate}
+          className="card"
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24, minHeight: 200, borderStyle: "dashed", cursor: "pointer", background: "transparent" }}
+          type="button"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 28, color: "var(--text2)" }}>add</span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>New Template</div>
+        </button>
       </div>
 
       <Modal
@@ -140,31 +122,31 @@ export function TemplatesPage() {
         onClose={() => setIsModalOpen(false)}
         title={editingTemplate ? "Edit Template" : "Create Template"}
       >
-        <div className="space-y-4">
+        <div style={{ display: "grid", gap: 12 }}>
           <Input
             label="Template Name"
             value={formName}
-            onChange={(e) => setFormName(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormName(e.target.value)}
             placeholder="e.g. Welcome Series"
           />
           <Input
             label="Subject Line"
             value={formSubject}
-            onChange={(e) => setFormSubject(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormSubject(e.target.value)}
             placeholder="e.g. Welcome to {{company}}!"
           />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-label-sm text-on-surface-variant uppercase tracking-wider">Body (HTML)</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Body (HTML)</label>
             <textarea
-              className="w-full bg-surface-container-high/50 border border-glass-stroke rounded-xl px-4 py-2.5 text-label-md text-on-surface placeholder:text-outline-variant focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all h-40 resize-none"
+              style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none", height: 160, resize: "none", fontFamily: "inherit" }}
               value={formBody}
               onChange={(e) => setFormBody(e.target.value)}
               placeholder="<p>Hello {{first_name}},</p>"
             />
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>{editingTemplate ? "Save Changes" : "Create Template"}</Button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 8 }}>
+            <button className="pillBtn" onClick={() => setIsModalOpen(false)} type="button">Cancel</button>
+            <button className="pillBtn" onClick={handleSave} type="button">{editingTemplate ? "Save Changes" : "Create Template"}</button>
           </div>
         </div>
       </Modal>
