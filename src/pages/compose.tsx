@@ -37,6 +37,7 @@ export function ComposePage() {
   const [validatingListId, setValidatingListId] = useState<string | null>(null);
   const [failedListId, setFailedListId] = useState<string | null>(null);
   const [pendingListData, setPendingListData] = useState<{ name: string; desc: string; emails: string } | null>(null);
+  const emailTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetchRecipients();
@@ -95,7 +96,7 @@ export function ComposePage() {
   };
 
   const parseEmails = (raw: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     const lines = raw.split(/[\n,]+/).map((e) => e.trim()).filter(Boolean);
     const valid: string[] = [];
     const invalid: string[] = [];
@@ -175,6 +176,16 @@ export function ComposePage() {
     setNewListEmails(emails);
     setCreateError(error);
     setShowCreateModal(true);
+  };
+
+  const jumpToInvalidEmail = (email: string) => {
+    const textarea = emailTextareaRef.current;
+    if (!textarea) return;
+    const text = textarea.value;
+    const idx = text.indexOf(email);
+    if (idx === -1) return;
+    textarea.focus();
+    textarea.setSelectionRange(idx, idx + email.length);
   };
 
   const handleDragStart = (e: React.DragEvent, variable: string) => {
@@ -516,6 +527,7 @@ export function ComposePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email List *</label>
                 <textarea
+                  ref={emailTextareaRef}
                   placeholder={"Paste emails here (one per line or comma separated)\ne.g. john@example.com, jane@test.com"}
                   value={newListEmails}
                   onChange={(e) => { setNewListEmails(e.target.value); setCreateError(""); }}
@@ -535,7 +547,13 @@ export function ComposePage() {
                 {invalidEmails.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {invalidEmails.map((email, i) => (
-                      <span key={i} style={{ fontSize: 10, color: "var(--bad)", background: "rgba(255,71,71,0.1)", padding: "2px 6px", borderRadius: 4 }}>
+                      <span
+                        key={i}
+                        onClick={() => jumpToInvalidEmail(email)}
+                        style={{ fontSize: 10, color: "var(--bad)", background: "rgba(255,71,71,0.1)", padding: "2px 6px", borderRadius: 4, cursor: "pointer", transition: "background 0.1s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.2)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.1)")}
+                      >
                         {email}
                       </span>
                     ))}
