@@ -1,3 +1,9 @@
+pub mod smtp;
+pub mod campaign;
+pub mod recipients;
+pub mod templates;
+pub mod reports;
+
 use tauri::command;
 
 #[command]
