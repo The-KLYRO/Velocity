@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Input } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
-import type { Template } from "../types";
 
 export function TemplatesPage() {
-  const { templates, addTemplate, updateTemplate, removeTemplate } = useTemplateStore();
+  const { templates, fetchTemplates, addTemplate, updateTemplate, removeTemplate } = useTemplateStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<{ id: string; name: string; subject: string; bodyHtml: string } | null>(null);
   const [formName, setFormName] = useState("");
   const [formSubject, setFormSubject] = useState("");
   const [formBody, setFormBody] = useState("");
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
 
   const openCreate = () => {
     setEditingTemplate(null);
@@ -19,7 +22,7 @@ export function TemplatesPage() {
     setIsModalOpen(true);
   };
 
-  const openEdit = (tpl: Template) => {
+  const openEdit = (tpl: { id: string; name: string; subject: string; bodyHtml: string }) => {
     setEditingTemplate(tpl);
     setFormName(tpl.name);
     setFormSubject(tpl.subject);
@@ -27,28 +30,26 @@ export function TemplatesPage() {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (editingTemplate) {
-      updateTemplate(editingTemplate.id, {
+      await updateTemplate(editingTemplate.id, {
         name: formName,
         subject: formSubject,
         bodyHtml: formBody,
       });
     } else {
-      addTemplate({
-        id: `tpl-${Date.now()}`,
+      await addTemplate({
         name: formName,
         subject: formSubject,
         bodyHtml: formBody,
         variables: [],
-        createdAt: new Date(),
       });
     }
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    removeTemplate(id);
+  const handleDelete = async (id: string) => {
+    await removeTemplate(id);
   };
 
   return (
@@ -65,6 +66,12 @@ export function TemplatesPage() {
       </div>
 
       <div className="kpiRow" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        {templates.length === 0 && (
+          <div className="card card--pad" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 14, color: "var(--text2)" }}>No templates yet. Create one to get started.</div>
+          </div>
+        )}
+
         {templates.map((template) => (
           <div key={template.id} className="card card--pad" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>

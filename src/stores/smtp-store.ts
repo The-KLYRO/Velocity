@@ -1,59 +1,97 @@
 import { create } from "zustand";
 import type { SmtpAccount } from "../types";
+import * as api from "../lib/tauri-api";
 
 interface SmtpState {
   accounts: SmtpAccount[];
   activeAccount: SmtpAccount | null;
-  addAccount: (account: SmtpAccount) => void;
-  removeAccount: (id: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  fetchAccounts: () => Promise<void>;
+  addAccount: (account: SmtpAccount) => Promise<SmtpAccount | null>;
+  removeAccount: (id: string) => Promise<void>;
   setActiveAccount: (account: SmtpAccount | null) => void;
-  updateAccount: (id: string, updates: Partial<SmtpAccount>) => void;
+  updateAccount: (id: string, updates: Partial<SmtpAccount>) => Promise<void>;
+  testConnection: (
+    email: string,
+    password: string,
+    host: string,
+    port: number
+  ) => Promise<{ connected: boolean; message: string }>;
 }
 
-const mockAccounts: SmtpAccount[] = [
-  {
-    id: "smtp-1",
-    email: "marketing@lumina-velocity.com",
-    host: "smtp.gmail.com",
-    port: 587,
-    encryption: "starttls",
-    dailyLimit: 500,
-    delayMs: 1000,
-    retryCount: 3,
-    isConnected: true,
-  },
-  {
-    id: "smtp-2",
-    email: "noreply@lumina-velocity.com",
-    host: "smtp.custom-server.com",
-    port: 465,
-    encryption: "tls",
-    dailyLimit: 1000,
-    delayMs: 1500,
-    retryCount: 5,
-    isConnected: false,
-  },
-];
+export const useSmtpStore = create<SmtpState>((set, get) => ({
+  accounts: [],
+  activeAccount: null,
+  isLoading: false,
+  error: null,
 
-export const useSmtpStore = create<SmtpState>((set) => ({
-  accounts: mockAccounts,
-  activeAccount: mockAccounts[0],
-  addAccount: (account) =>
-    set((state) => ({ accounts: [...state.accounts, account] })),
-  removeAccount: (id) =>
-    set((state) => ({
-      accounts: state.accounts.filter((a) => a.id !== id),
-      activeAccount: state.activeAccount?.id === id ? null : state.activeAccount,
-    })),
+  fetchAccounts: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const accounts = await api.fetchSmtpAccounts();
+      const activeAccount = accounts.find((a) => a.isConnected) ?? accounts[0] ?? null;
+      set({ accounts, activeAccount, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  addAccount: async (account) => {
+    try {
+      const saved = await api.saveSmtpAccount(account);
+      set((state) => ({
+        accounts: [...state.accounts, saved],
+        activeAccount: state.activeAccount ?? saved,
+      }));
+      return saved;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
+  removeAccount: async (id) => {
+    try {
+      await api.deleteSmtpAccount(id);
+      set((state) => ({
+        accounts: state.accounts.filter((a) => a.id !== id),
+        activeAccount:
+          state.activeAccount?.id === id ? null : state.activeAccount,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   setActiveAccount: (account) => set({ activeAccount: account }),
-  updateAccount: (id, updates) =>
-    set((state) => ({
-      accounts: state.accounts.map((a) =>
-        a.id === id ? { ...a, ...updates } : a
-      ),
-      activeAccount:
-        state.activeAccount?.id === id
-          ? { ...state.activeAccount, ...updates }
-          : state.activeAccount,
-    })),
+
+  updateAccount: async (id, updates) => {
+    try {
+      const existing = get().accounts.find((a) => a.id === id);
+      if (!existing) return;
+
+      const updatedAccount = { ...existing, ...updates };
+      const saved = await api.saveSmtpAccount(updatedAccount);
+
+      set((state) => ({
+        accounts: state.accounts.map((a) =>
+          a.id === id ? saved : a
+        ),
+        activeAccount:
+          state.activeAccount?.id === id ? saved : state.activeAccount,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  testConnection: async (email, password, host, port) => {
+    try {
+      const result = await api.testSmtpConnection(email, password, host, port);
+      return result;
+    } catch (e) {
+      return { connected: false, message: String(e) };
+    }
+  },
 }));

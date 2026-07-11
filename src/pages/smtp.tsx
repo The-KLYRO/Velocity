@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input, Button, Toast } from "../components/ui";
 import { useSmtpStore } from "../stores/smtp-store";
-import type { SmtpAccount, SmtpEncryption } from "../types";
+import type { SmtpEncryption } from "../types";
 
 export function SmtpPage() {
-  const { accounts, addAccount, updateAccount, removeAccount } = useSmtpStore();
+  const { accounts, fetchAccounts, addAccount, removeAccount, updateAccount, testConnection } = useSmtpStore();
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
@@ -22,27 +22,32 @@ export function SmtpPage() {
 
   const [testResults, setTestResults] = useState<Record<string, { testing: boolean; result: "success" | "error" | null }>>({});
 
-  const handleTestConnection = async (account: SmtpAccount) => {
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
+
+  const handleTestConnection = async (account: { id: string; email: string; host: string; port: number }) => {
     setTestResults((prev) => ({ ...prev, [account.id]: { testing: true, result: null } }));
 
-    // Simulate SMTP test (in real app, this would invoke a Tauri command)
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const success = account.host.includes("gmail") || Math.random() > 0.3;
+    const result = await testConnection(account.email, "", account.host, account.port);
+    const success = result.connected;
     setTestResults((prev) => ({ ...prev, [account.id]: { testing: false, result: success ? "success" : "error" } }));
-    updateAccount(account.id, { isConnected: success });
 
-    setToastMessage(success ? `Connected to ${account.host}` : `Failed to connect to ${account.host}`);
+    if (success) {
+      await updateAccount(account.id, { isConnected: true });
+    }
+
+    setToastMessage(success ? result.message : result.message);
     setToastType(success ? "success" : "error");
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  const handleAddAccount = () => {
+  const handleAddAccount = async () => {
     if (!newAccount.email || !newAccount.host) return;
 
-    const account: SmtpAccount = {
-      id: `smtp-${Date.now()}`,
+    const saved = await addAccount({
+      id: "",
       email: newAccount.email,
       host: newAccount.host,
       port: Number(newAccount.port) || 587,
@@ -51,19 +56,19 @@ export function SmtpPage() {
       delayMs: Number(newAccount.delayMs) || 1000,
       retryCount: Number(newAccount.retryCount) || 3,
       isConnected: false,
-    };
+    });
 
-    addAccount(account);
-    setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
-
-    setToastMessage("Account added successfully");
-    setToastType("success");
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    if (saved) {
+      setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
+      setToastMessage("Account added successfully");
+      setToastType("success");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    }
   };
 
-  const handleDeleteAccount = (id: string) => {
-    removeAccount(id);
+  const handleDeleteAccount = async (id: string) => {
+    await removeAccount(id);
     setToastMessage("Account deleted");
     setToastType("info");
     setShowToast(true);
@@ -94,7 +99,6 @@ export function SmtpPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Input label="Email Address" type="email" defaultValue={account.email} />
-                <Input label="Password" type="password" defaultValue="••••••••" />
                 <Input label="SMTP Host" defaultValue={account.host} />
                 <Input label="Port" type="number" defaultValue={String(account.port)} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -1,38 +1,37 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { StatCard } from "../components/ui";
 import { useCampaignStore } from "../stores/campaign-store";
-
-const mockLogs = [
-  { campaign: "Summer Sale", recipient: "john@example.com", event: "Delivered", status: "completed" as const, time: "2 mins ago" },
-  { campaign: "Newsletter", recipient: "jane@test.com", event: "Opened", status: "active" as const, time: "5 mins ago" },
-  { campaign: "Re-engagement", recipient: "bob@old.com", event: "Bounced", status: "failed" as const, time: "12 mins ago" },
-  { campaign: "Product Launch", recipient: "alice@company.io", event: "Clicked", status: "active" as const, time: "18 mins ago" },
-  { campaign: "Welcome Series", recipient: "new@user.com", event: "Sent", status: "pending" as const, time: "25 mins ago" },
-];
+import * as api from "../lib/tauri-api";
 
 export function ReportsPage() {
-  const { campaigns } = useCampaignStore();
+  const { campaigns, fetchCampaigns } = useCampaignStore();
+  const [logs, setLogs] = useState<api.LogWithInfo[]>([]);
+  const [stats, setStats] = useState<api.DashboardStats | null>(null);
 
-  const stats = useMemo(() => {
-    const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0);
-    const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
-    const deliveryRate = totalRecipients > 0 ? ((totalSent / totalRecipients) * 100).toFixed(1) : "0";
-    const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
-    return { totalSent, deliveryRate, completedCampaigns, totalCampaigns: campaigns.length };
-  }, [campaigns]);
+  useEffect(() => {
+    fetchCampaigns();
+    api.fetchCampaignLogsWithInfo(undefined, 50).then(setLogs).catch(() => {});
+    api.fetchDashboardStats().then(setStats).catch(() => {});
+  }, [fetchCampaigns]);
 
-  const handleExport = () => {
-    const csv = [
-      "Campaign,Recipient,Event,Status,Time",
-      ...mockLogs.map((l) => `${l.campaign},${l.recipient},${l.event},${l.status},${l.time}`),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "report.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  const totalSent = stats?.totalSent ?? campaigns.reduce((sum, c) => sum + c.sentCount, 0);
+  const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+  const deliveryRate = totalRecipients > 0 ? ((totalSent / totalRecipients) * 100).toFixed(1) : "0";
+  const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
+
+  const handleExport = async () => {
+    try {
+      const csv = await api.exportLogsCsv();
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "report.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed:", e);
+    }
   };
 
   return (
@@ -49,10 +48,10 @@ export function ReportsPage() {
       </div>
 
       <div className="kpiRow">
-        <StatCard label="Total Sent" value={stats.totalSent.toLocaleString()} icon="send" />
-        <StatCard label="Delivery Rate" value={`${stats.deliveryRate}%`} icon="check_circle" />
-        <StatCard label="Active Campaigns" value={String(stats.totalCampaigns - stats.completedCampaigns)} icon="campaign" />
-        <StatCard label="Completed" value={String(stats.completedCampaigns)} icon="task_alt" />
+        <StatCard label="Total Sent" value={totalSent.toLocaleString()} icon="send" />
+        <StatCard label="Delivery Rate" value={`${deliveryRate}%`} icon="check_circle" />
+        <StatCard label="Active Campaigns" value={String(campaigns.length - completedCampaigns)} icon="campaign" />
+        <StatCard label="Completed" value={String(completedCampaigns)} icon="task_alt" />
       </div>
 
       <div className="gridBottom">
@@ -102,7 +101,7 @@ export function ReportsPage() {
       <div className="card card--pad" style={{ marginTop: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div className="panelTitle" style={{ marginBottom: 0 }}>Recent Activity Logs</div>
-          <span style={{ fontSize: 11, color: "var(--text2)", cursor: "pointer" }}>View All</span>
+          <span style={{ fontSize: 11, color: "var(--text2)" }}>Last {logs.length} entries</span>
         </div>
         <div className="historyHeader">
           <div></div>
@@ -111,14 +110,18 @@ export function ReportsPage() {
           <div>Event</div>
           <div>Status</div>
         </div>
-        {mockLogs.map((log, i) => (
-          <div className="historyRow" key={i}>
+        {logs.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--text2)" }}>
+            No activity logs yet. Logs will appear after campaigns are sent.
+          </div>
+        ) : logs.map((log) => (
+          <div className="historyRow" key={log.id}>
             <div style={{ width: 40 }} />
-            <div className="cellMain">{log.campaign}</div>
-            <div className="cellSub" style={{ fontSize: 12 }}>{log.recipient}</div>
+            <div className="cellMain">{log.campaignName}</div>
+            <div className="cellSub" style={{ fontSize: 12 }}>{log.recipientEmail}</div>
             <div className="cellSub" style={{ fontSize: 12 }}>{log.event}</div>
             <div>
-              <span className={`status ${log.status === "completed" ? "status--ok" : log.status === "active" ? "status--warn" : log.status === "failed" ? "status--bad" : ""}`}>
+              <span className={`status ${log.status === "success" ? "status--ok" : log.status === "pending" ? "status--warn" : "status--bad"}`}>
                 {log.status}
               </span>
             </div>

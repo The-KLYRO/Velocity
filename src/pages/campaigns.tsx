@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ProgressBar } from "../components/ui";
 import { useCampaignStore } from "../stores/campaign-store";
 
@@ -39,16 +40,21 @@ function getEstFinish(campaign: {
 }
 
 export function CampaignsPage() {
-  const { campaigns, updateCampaign, addCampaign } = useCampaignStore();
+  const { campaigns, fetchCampaigns, pauseCampaign, resumeCampaign, addCampaign } = useCampaignStore();
 
-  const handlePause = (id: string) => updateCampaign(id, { status: "paused" });
-  const handleResume = (id: string) => updateCampaign(id, { status: "running" });
-  const handleClone = (campaign: (typeof campaigns)[number]) => {
-    addCampaign({
-      ...campaign,
-      id: `camp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  const handlePause = (id: string) => pauseCampaign(id);
+  const handleResume = (id: string) => resumeCampaign(id);
+  const handleClone = async (campaign: (typeof campaigns)[number]) => {
+    await addCampaign({
+      id: "",
       name: campaign.name + " (Copy)",
       status: "draft",
+      templateId: campaign.templateId,
+      createdAt: new Date(),
       sentCount: 0,
       totalCount: campaign.totalCount,
     });
@@ -74,6 +80,12 @@ export function CampaignsPage() {
       </div>
 
       <div className="kpiRow" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+        {campaigns.length === 0 && (
+          <div className="card card--pad" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 14, color: "var(--text2)" }}>No campaigns yet. Create one from the Compose page.</div>
+          </div>
+        )}
+
         {campaigns.map((campaign) => {
           const color = getColor(campaign);
           const progress =

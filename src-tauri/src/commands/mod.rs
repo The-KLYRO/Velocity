@@ -3,6 +3,7 @@ pub mod campaign;
 pub mod recipients;
 pub mod templates;
 pub mod reports;
+pub mod settings;
 
 use tauri::command;
 

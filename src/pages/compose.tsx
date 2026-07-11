@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTemplateStore } from "../stores/template-store";
 import { useCampaignStore } from "../stores/campaign-store";
 import { useSendingStore } from "../stores/sending-store";
@@ -13,48 +13,58 @@ export function ComposePage() {
   const { addTemplate } = useTemplateStore();
   const { addCampaign } = useCampaignStore();
   const { startSending } = useSendingStore();
-  const { recipients } = useRecipientStore();
-  const { activeAccount } = useSmtpStore();
-  const { signature } = useSettingsStore();
+  const { recipients, fetchRecipients } = useRecipientStore();
+  const { accounts, fetchAccounts } = useSmtpStore();
+  const { signature, fetchSettings } = useSettingsStore();
+  const activeAccount = accounts.find((a) => a.isConnected) ?? accounts[0] ?? null;
 
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState(
-    `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Velocity that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
-  );
+  const [body, setBody] = useState("");
   const [showSaved, setShowSaved] = useState(false);
 
-  const handleSaveTemplate = () => {
-    const newTemplate = {
-      id: `tpl-${Date.now()}`,
+  useEffect(() => {
+    fetchRecipients();
+    fetchAccounts();
+    fetchSettings();
+  }, [fetchRecipients, fetchAccounts, fetchSettings]);
+
+  useEffect(() => {
+    if (body === "" && signature) {
+      setBody(
+        `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Velocity that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
+      );
+    }
+  }, [signature]);
+
+  const handleSaveTemplate = async () => {
+    await addTemplate({
       name: subject || "Untitled Template",
       subject,
       bodyHtml: body,
       variables: systemVars.concat(customVars).map((v) => v.replace(/[{}]/g, "")),
-      createdAt: new Date(),
-    };
-    addTemplate(newTemplate);
+    });
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
   };
 
-  const handleSendNow = () => {
+  const handleSendNow = async () => {
     if (!activeAccount) return;
     const recipientIds = to
       ? to.split(",").map((_, i) => `r-imported-${Date.now()}-${i}`)
       : recipients.filter((r) => r.status === "active").map((r) => r.id);
 
-    const campaign = {
-      id: `camp-${Date.now()}`,
+    await addCampaign({
+      id: "",
       name: subject || "Quick Send",
-      status: "running" as const,
+      status: "draft",
       templateId: undefined,
       createdAt: new Date(),
       sentCount: 0,
       totalCount: recipientIds.length,
-    };
-    addCampaign(campaign);
-    startSending(campaign.id, recipientIds.length);
+    });
+
+    startSending(`camp-${Date.now()}`, recipientIds.length);
   };
 
   return (

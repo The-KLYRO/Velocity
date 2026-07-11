@@ -1,73 +1,109 @@
 import { create } from "zustand";
 import type { Campaign } from "../types";
+import * as api from "../lib/tauri-api";
 
 interface CampaignState {
   campaigns: Campaign[];
   activeCampaign: Campaign | null;
-  addCampaign: (campaign: Campaign) => void;
-  removeCampaign: (id: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  fetchCampaigns: () => Promise<void>;
+  addCampaign: (campaign: Campaign) => Promise<void>;
+  removeCampaign: (id: string) => Promise<void>;
   setActiveCampaign: (campaign: Campaign | null) => void;
-  updateCampaign: (id: string, updates: Partial<Campaign>) => void;
+  updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
+  pauseCampaign: (id: string) => Promise<void>;
+  resumeCampaign: (id: string) => Promise<void>;
 }
 
-const mockCampaigns: Campaign[] = [
-  {
-    id: "camp-1",
-    name: "Q4 Expansion Push",
-    status: "running",
-    templateId: "tpl-1",
-    createdAt: new Date("2024-10-20"),
-    sentCount: 9337,
-    totalCount: 12450,
-  },
-  {
-    id: "camp-2",
-    name: "Internal Newsletter",
-    status: "paused",
-    templateId: "tpl-2",
-    createdAt: new Date("2024-10-22"),
-    sentCount: 272,
-    totalCount: 850,
-  },
-  {
-    id: "camp-3",
-    name: "Black Friday Flash",
-    status: "completed",
-    templateId: "tpl-3",
-    createdAt: new Date("2024-10-18"),
-    sentCount: 45000,
-    totalCount: 45000,
-  },
-  {
-    id: "camp-4",
-    name: "Beta Invite Wave 2",
-    status: "running",
-    templateId: "tpl-4",
-    createdAt: new Date("2024-10-24"),
-    sentCount: 4628,
-    totalCount: 5200,
-  },
-];
-
 export const useCampaignStore = create<CampaignState>((set) => ({
-  campaigns: mockCampaigns,
+  campaigns: [],
   activeCampaign: null,
-  addCampaign: (campaign) =>
-    set((state) => ({ campaigns: [...state.campaigns, campaign] })),
-  removeCampaign: (id) =>
-    set((state) => ({
-      campaigns: state.campaigns.filter((c) => c.id !== id),
-      activeCampaign: state.activeCampaign?.id === id ? null : state.activeCampaign,
-    })),
+  isLoading: false,
+  error: null,
+
+  fetchCampaigns: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const campaigns = await api.fetchCampaigns();
+      set({ campaigns, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  addCampaign: async (campaign) => {
+    try {
+      const created = await api.createCampaign(
+        campaign.name,
+        campaign.templateId,
+        campaign.totalCount
+      );
+      set((state) => ({ campaigns: [created, ...state.campaigns] }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  removeCampaign: async (id) => {
+    try {
+      await api.deleteCampaign(id);
+      set((state) => ({
+        campaigns: state.campaigns.filter((c) => c.id !== id),
+        activeCampaign:
+          state.activeCampaign?.id === id ? null : state.activeCampaign,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   setActiveCampaign: (campaign) => set({ activeCampaign: campaign }),
-  updateCampaign: (id, updates) =>
-    set((state) => ({
-      campaigns: state.campaigns.map((c) =>
-        c.id === id ? { ...c, ...updates } : c
-      ),
-      activeCampaign:
-        state.activeCampaign?.id === id
-          ? { ...state.activeCampaign, ...updates }
-          : state.activeCampaign,
-    })),
+
+  updateCampaign: async (id, updates) => {
+    try {
+      if (updates.status === "running") {
+        await api.startCampaign(id);
+      } else if (updates.status === "paused") {
+        await api.pauseCampaign(id);
+      }
+      set((state) => ({
+        campaigns: state.campaigns.map((c) =>
+          c.id === id ? { ...c, ...updates } : c
+        ),
+        activeCampaign:
+          state.activeCampaign?.id === id
+            ? { ...state.activeCampaign, ...updates }
+            : state.activeCampaign,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  pauseCampaign: async (id) => {
+    try {
+      await api.pauseCampaign(id);
+      set((state) => ({
+        campaigns: state.campaigns.map((c) =>
+          c.id === id ? { ...c, status: "paused" as const } : c
+        ),
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  resumeCampaign: async (id) => {
+    try {
+      await api.resumeCampaign(id);
+      set((state) => ({
+        campaigns: state.campaigns.map((c) =>
+          c.id === id ? { ...c, status: "running" as const } : c
+        ),
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
 }));

@@ -88,7 +88,7 @@ pub async fn get_recipients(
         .map_err(|e| format!("Failed to fetch recipients: {}", e))?;
 
     Ok((rows.into_iter().map(|r| {
-        let tags: Vec<String> = serde_json::from_str(&r.4).unwrap_or_default();
+        let tags: Vec<String> = serde_json::from_str(&r.5).unwrap_or_default();
         RecipientData {
             id: r.0,
             email: r.1,
@@ -100,6 +100,74 @@ pub async fn get_recipients(
             last_sent: r.7,
         }
     }).collect(), total.0))
+}
+
+#[command]
+pub async fn search_recipients(
+    state: State<'_, AppState>,
+    query: String,
+    page: Option<i64>,
+    per_page: Option<i64>,
+) -> Result<(Vec<RecipientData>, i64), String> {
+    let pool = state.get_pool().await?;
+    let page = page.unwrap_or(1);
+    let per_page = per_page.unwrap_or(50);
+    let offset = (page - 1) * per_page;
+    let like_query = format!("%{}%", query);
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM recipients WHERE name LIKE ? OR email LIKE ? OR company LIKE ?"
+    )
+    .bind(&like_query)
+    .bind(&like_query)
+    .bind(&like_query)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to count recipients: {}", e))?;
+
+    let rows: Vec<(String, String, String, Option<String>, String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, email, name, company, status, tags, created_at, last_sent FROM recipients WHERE name LIKE ? OR email LIKE ? OR company LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    )
+    .bind(&like_query)
+    .bind(&like_query)
+    .bind(&like_query)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("Failed to search recipients: {}", e))?;
+
+    Ok((rows.into_iter().map(|r| {
+        let tags: Vec<String> = serde_json::from_str(&r.5).unwrap_or_default();
+        RecipientData {
+            id: r.0,
+            email: r.1,
+            name: r.2,
+            company: r.3,
+            status: r.4,
+            tags,
+            created_at: r.6,
+            last_sent: r.7,
+        }
+    }).collect(), total.0))
+}
+
+#[command]
+pub async fn update_recipient_status(
+    state: State<'_, AppState>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
+    let pool = state.get_pool().await?;
+
+    sqlx::query("UPDATE recipients SET status = ? WHERE id = ?")
+        .bind(&status)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to update recipient status: {}", e))?;
+
+    Ok(())
 }
 
 #[command]

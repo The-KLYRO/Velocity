@@ -1,13 +1,13 @@
-import { useState } from "react";
-import { Input, Button, Toast } from "../components/ui";
+import { useState, useEffect } from "react";
+import { Button, Toast } from "../components/ui";
 import { useSettingsStore } from "../stores/settings-store";
 
 export function SettingsPage() {
   const {
     delayMs, retryCount, dailyLimit, batchSize,
     notifications, tracking, signature,
-    setDelayMs, setRetryCount, setDailyLimit, setBatchSize,
-    toggleNotification, toggleTracking, setSignature,
+    fetchSettings, setDelayMs, setRetryCount, setDailyLimit, setBatchSize,
+    toggleNotification, toggleTracking, setSignature, saveAll,
   } = useSettingsStore();
 
   const [showToast, setShowToast] = useState(false);
@@ -16,11 +16,23 @@ export function SettingsPage() {
   const [localLimit, setLocalLimit] = useState(String(dailyLimit));
   const [localBatch, setLocalBatch] = useState(String(batchSize));
 
-  const handleSave = () => {
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  useEffect(() => {
+    setLocalDelay(String(delayMs));
+    setLocalRetry(String(retryCount));
+    setLocalLimit(String(dailyLimit));
+    setLocalBatch(String(batchSize));
+  }, [delayMs, retryCount, dailyLimit, batchSize]);
+
+  const handleSave = async () => {
     setDelayMs(Number(localDelay) || 1000);
     setRetryCount(Number(localRetry) || 3);
     setDailyLimit(Number(localLimit) || 500);
     setBatchSize(Number(localBatch) || 50);
+    await saveAll();
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };
@@ -36,10 +48,26 @@ export function SettingsPage() {
         <div className="card card--pad" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Sending Defaults</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Input label="Delay Between Emails (ms)" type="number" value={localDelay} onChange={(e) => setLocalDelay(e.target.value)} />
-            <Input label="Retry Count" type="number" value={localRetry} onChange={(e) => setLocalRetry(e.target.value)} />
-            <Input label="Daily Send Limit" type="number" value={localLimit} onChange={(e) => setLocalLimit(e.target.value)} />
-            <Input label="Batch Size" type="number" value={localBatch} onChange={(e) => setLocalBatch(e.target.value)} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Delay Between Emails (ms)</label>
+              <input type="number" value={localDelay} onChange={(e) => setLocalDelay(e.target.value)}
+                style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Retry Count</label>
+              <input type="number" value={localRetry} onChange={(e) => setLocalRetry(e.target.value)}
+                style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Daily Send Limit</label>
+              <input type="number" value={localLimit} onChange={(e) => setLocalLimit(e.target.value)}
+                style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Batch Size</label>
+              <input type="number" value={localBatch} onChange={(e) => setLocalBatch(e.target.value)}
+                style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" }} />
+            </div>
           </div>
         </div>
 
