@@ -179,13 +179,16 @@ export function ComposePage() {
   };
 
   const jumpToInvalidEmail = (email: string) => {
-    const textarea = emailTextareaRef.current;
-    if (!textarea) return;
-    const text = textarea.value;
-    const idx = text.indexOf(email);
-    if (idx === -1) return;
-    textarea.focus();
-    textarea.setSelectionRange(idx, idx + email.length);
+    setTimeout(() => {
+      const textarea = emailTextareaRef.current;
+      if (!textarea) return;
+      const text = textarea.value;
+      const idx = text.indexOf(email);
+      textarea.focus();
+      if (idx !== -1) {
+        textarea.setSelectionRange(idx, idx + email.length);
+      }
+    }, 50);
   };
 
   const handleDragStart = (e: React.DragEvent, variable: string) => {
@@ -549,7 +552,7 @@ export function ComposePage() {
                     {invalidEmails.map((email, i) => (
                       <span
                         key={i}
-                        onClick={() => jumpToInvalidEmail(email)}
+                        onClick={(e) => { e.stopPropagation(); jumpToInvalidEmail(email); }}
                         style={{ fontSize: 10, color: "var(--bad)", background: "rgba(255,71,71,0.1)", padding: "2px 6px", borderRadius: 4, cursor: "pointer", transition: "background 0.1s" }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.2)")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.1)")}
