@@ -38,7 +38,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     openTracking: true,
     clickTracking: true,
   },
-  signature: "Best regards,\nYour Name\nLumina Velocity Team",
+  signature: "Best regards,\nYour Name\nVelocity Team",
   setDelayMs: (ms) => set({ delayMs: ms }),
   setRetryCount: (count) => set({ retryCount: count }),
   setDailyLimit: (limit) => set({ dailyLimit: limit }),
