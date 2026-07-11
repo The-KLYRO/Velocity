@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
-  "productName": "Lumina Velocity",
+  "productName": "Velocity",
   "version": "0.1.0",
   "identifier": "com.lumina.velocity",
   "build": {
@@ -10,15 +10,16 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Lumina Velocity",
+        "title": "Velocity",
         "width": 1280,
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true
+        "decorations": false,
+        "transparent": false
       }
     ],
     "security": {

@@ -18,7 +18,7 @@ impl AppState {
     pub async fn init_db(&self) -> Result<(), sqlx::Error> {
         let db_path = dirs::data_local_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("lumina-velocity")
+            .join("velocity")
             .join("lumina.db");
 
         std::fs::create_dir_all(db_path.parent().unwrap()).ok();

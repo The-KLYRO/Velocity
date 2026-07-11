@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="Lumina Velocity Logo" width="128" height="128">
+  <img src="public/icon.png" alt="Velocity Logo" width="128" height="128">
 </p>
 
-<h1 align="center">Lumina Velocity</h1>
+<h1 align="center">Velocity</h1>
 
 <p align="center">
   <strong>High-Performance Bulk Email Management</strong><br>
@@ -24,7 +24,7 @@
 
 ## Overview
 
-Lumina Velocity is a desktop application built with **Tauri v2** (Rust backend + React frontend) designed for professional bulk email management. It combines a glassmorphic dark UI with a high-performance Rust engine for SMTP sending, template rendering, and campaign tracking.
+Velocity is a desktop application built with **Tauri v2** (Rust backend + React frontend) designed for professional bulk email management. It features a **nuexa-inspired dark monochrome UI** with a high-performance Rust engine for SMTP sending, template rendering, and campaign tracking.
 
 The application handles everything from composing personalized emails with rich templates to managing recipient lists, scheduling campaigns, and monitoring delivery reports — all from a single, beautiful interface.
 
@@ -37,7 +37,8 @@ The application handles everything from composing personalized emails with rich 
 - **SMTP Configuration** - Multi-account SMTP management with connection testing
 - **Delivery Reports** - Real-time analytics on sent, delivered, opened, and bounced emails
 - **Queue Management** - Priority-based sending queue with rate limiting and retry logic
-- **Dark Glassmorphism UI** - Atmospheric, layered dark theme with neon accents
+- **Custom Frameless Window** - Themed title bar with minimize/maximize/close controls
+- **Dark Monochrome UI** - Nuexa-inspired gradient surfaces with subtle glass effects
 
 ## Tech Stack
 
@@ -46,12 +47,12 @@ The application handles everything from composing personalized emails with rich 
 | Language | Rust |
 | Desktop Framework | Tauri v2 |
 | Frontend | React 19 + TypeScript + Vite |
-| Styling | TailwindCSS 4 + Custom Glassmorphism |
+| Styling | TailwindCSS 4 + Custom CSS Variables |
 | State Management | Zustand |
 | Data Fetching | TanStack Query |
 | Forms | React Hook Form + Zod |
 | Icons | Material Symbols Outlined |
-| Typography | Sora (headlines) + Inter (body) |
+| Typography | Sora |
 | Database | SQLite via SQLx |
 | SMTP | lettre |
 | Templates | Handlebars |
@@ -74,13 +75,14 @@ The application handles everything from composing personalized emails with rich 
 ```
 Bulk-Emails/
 ├── src/                       # React frontend
-│   ├── components/ui/         # Reusable UI (glass-card, button, badge, etc.)
-│   ├── layout/                # sidebar, topbar, app-layout
+│   ├── components/ui/         # Reusable UI (button, glass-card, stat-card, etc.)
+│   ├── layout/                # sidebar, topbar, app-layout, titlebar
 │   ├── pages/                 # dashboard, compose, recipients, campaigns, templates, reports, settings, smtp
 │   ├── stores/                # Zustand stores (smtp, campaign, recipient, template, settings, queue, sending)
 │   ├── routes/                # React Router config
 │   └── types/                 # TypeScript types
 ├── src-tauri/                 # Rust backend
+│   ├── capabilities/          # Tauri v2 permissions
 │   ├── src/
 │   │   ├── commands/          # Tauri IPC command handlers
 │   │   ├── database/          # SQLx migrations + connection
@@ -91,10 +93,8 @@ Bulk-Emails/
 │   └── Cargo.toml
 ├── UI/                        # Design assets & HTML mockups
 │   ├── lumina_velocity/       # DESIGN.md — full design system spec
-│   ├── g_sender_dashboard/    # Dashboard mockup
-│   ├── advanced_email_composer/ # Compose mockup
-│   ├── recipient_management/  # Recipients mockup
-│   └── campaign_overview/     # Campaigns mockup
+│   └── nuexa-dashboard-main/  # Reference theme
+├── public/                    # Static assets (icon)
 └── package.json
 ```
 
@@ -138,27 +138,29 @@ cargo clippy         # Lint
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | Overview with stats, recent campaigns, and quick actions |
-| **Compose** | Rich email editor with template support and preview |
+| **Dashboard** | Overview with KPIs, recent activity, and sending queue |
+| **Compose** | Rich email editor with template variables and preview |
 | **Recipients** | Contact management with import/export and segmentation |
 | **Campaigns** | Campaign creation, scheduling, and status tracking |
 | **Templates** | Handlebars template editor with variable preview |
 | **Reports** | Delivery analytics, open rates, and bounce tracking |
-| **Settings** | App configuration and preferences |
+| **Settings** | App configuration, notifications, and email signature |
 | **SMTP** | Multi-account SMTP server management |
 
 ## Design System
 
-Lumina Velocity uses a custom **Dark Glassmorphism** design system defined in `UI/lumina_velocity/DESIGN.md`:
+Velocity uses a **nuexa-inspired dark monochrome** design system:
 
-- **Deep Dark Foundation** - Near-black charcoal surfaces with tonal layering
-- **Neon Blue Primary** - `#adc6ff` for actions, progress, and active states
-- **Purple Secondary** - `#ddb7ff` for accents and data visualization
-- **Glassmorphic Cards** - Translucent surfaces with backdrop blur and glass-stroke borders
-- **4px Baseline Grid** - Surgical precision in all spacing and alignment
+- **Dark Foundation** - Near-black backgrounds (`#0c0d0f`, `#101215`) with radial gradient overlays
+- **Gradient Surfaces** - Cards and panels use `rgba(255,255,255,0.07-0.04)` gradient fills
+- **Subtle Borders** - White-stroke borders at 8-14% opacity for depth
+- **CSS Variable System** - `--bg0`, `--text0`, `--stroke0`, `--panel0` for consistent theming
+- **Sora Typography** - Single font family for visual consistency
+- **Custom Frameless Window** - Themed title bar with inline window controls
 
 ## Development Roadmap
 
+### Completed
 - [x] Phase 1: Project initialization with Vite, React, TypeScript, Tailwind
 - [x] Phase 2: Tauri v2 backend with Rust skeleton, models, and icons
 - [x] Phase 3: Reusable UI components and layout system
@@ -166,13 +168,28 @@ Lumina Velocity uses a custom **Dark Glassmorphism** design system defined in `U
 - [x] Phase 5: Zustand stores and TypeScript types
 - [x] Phase 6: Rust command skeletons and database migrations
 - [x] Phase 7: React Router setup and app wiring
-- [ ] Phase 8: SMTP sending engine with lettre
-- [ ] Phase 9: SQLite database operations and migrations
-- [ ] Phase 10: Template rendering with Handlebars
-- [ ] Phase 11: Campaign queue and scheduling
-- [ ] Phase 12: File import (CSV/Excel) for recipients
-- [ ] Phase 13: Real-time delivery tracking
-- [ ] Phase 14: Polish, animations, and performance optimization
+- [x] Phase 8: SMTP sending engine with lettre
+- [x] Phase 9: SQLite database operations and migrations
+- [x] Phase 10: File import (CSV) for recipients with validation
+- [x] Phase 11: Campaign queue management with Zustand stores
+- [x] Phase 12: Template management with Handlebars
+- [x] Phase 13: Delivery reports with stats and CSV export
+- [x] Phase 14: Nuexa theme transformation — custom frameless window, gradient surfaces, monochrome palette
+
+### In Progress
+- [ ] Phase 15: Real SMTP connection testing and email sending via Rust backend
+- [ ] Phase 16: Real-time delivery tracking with progress updates
+
+### Planned
+- [ ] Phase 17: Email sending queue with rate limiting and retry logic (Rust)
+- [ ] Phase 18: Drag-and-drop CSV/Excel import with field mapping
+- [ ] Phase 19: Campaign scheduling with cron-based automation
+- [ ] Phase 20: Email open/click tracking with pixel and webhook integration
+- [ ] Phase 21: Template preview with live variable rendering
+- [ ] Phase 22: Advanced recipient segmentation and tagging
+- [ ] Phase 23: Polish, animations, and performance optimization
+- [ ] Phase 24: Cross-platform testing (Windows, macOS, Linux)
+- [ ] Phase 25: Code signing and auto-updater integration
 
 ## Contributing
 
@@ -187,5 +204,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [Tauri](https://tauri.app/) - Desktop app framework
 - [React](https://react.dev/) - Frontend library
 - [TailwindCSS](https://tailwindcss.com/) - Utility-first CSS
+- [nuexa-dashboard](https://github.com/pamod-madubashana/nuexa-dashboard) - UI theme reference
 - [lettre](https://docs.rs/lettre/) - Rust SMTP library
 - [Handlebars](https://handlebarsjs.com/) - Template engine

@@ -1,296 +1,592 @@
-import { useState } from "react";
-import { TopBar } from "../layout/topbar";
-import { Button } from "../components/ui";
+import { useState, useEffect, useRef } from "react";
+import { Toast } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
 import { useCampaignStore } from "../stores/campaign-store";
 import { useSendingStore } from "../stores/sending-store";
 import { useRecipientStore } from "../stores/recipient-store";
 import { useSmtpStore } from "../stores/smtp-store";
 import { useSettingsStore } from "../stores/settings-store";
+import { useListStore } from "../stores/list-store";
 
 const systemVars = ["{{first_name}}", "{{last_name}}", "{{email}}"];
 const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
 
 export function ComposePage() {
-  const { templates, addTemplate } = useTemplateStore();
+  const { addTemplate } = useTemplateStore();
   const { addCampaign } = useCampaignStore();
   const { startSending } = useSendingStore();
-  const { recipients } = useRecipientStore();
-  const { activeAccount } = useSmtpStore();
-  const { signature } = useSettingsStore();
+  const { recipients, fetchRecipients, addRecipient } = useRecipientStore();
+  const { accounts, fetchAccounts } = useSmtpStore();
+  const { signature, fetchSettings } = useSettingsStore();
+  const { lists, fetchLists, createList, addMembersToList, deleteList } = useListStore();
+  const activeAccount = accounts.find((a) => a.isConnected) ?? accounts[0] ?? null;
 
-  const [to, setTo] = useState("");
+  const [selectedList, setSelectedList] = useState<string>("__create__");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState(
-    `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Lumina that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
-  );
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [body, setBody] = useState("");
   const [showSaved, setShowSaved] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const handleSaveTemplate = () => {
-    const newTemplate = {
-      id: `tpl-${Date.now()}`,
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [newListDesc, setNewListDesc] = useState("");
+  const [newListEmails, setNewListEmails] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [validatingListId, setValidatingListId] = useState<string | null>(null);
+  const [failedListId, setFailedListId] = useState<string | null>(null);
+  const [pendingListData, setPendingListData] = useState<{ name: string; desc: string; emails: string } | null>(null);
+  const emailTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetchRecipients();
+    fetchAccounts();
+    fetchSettings();
+    fetchLists();
+  }, [fetchRecipients, fetchAccounts, fetchSettings, fetchLists]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) {
+      setTimeout(() => document.addEventListener("mousedown", handleClickOutside), 0);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showDropdown]);
+
+  useEffect(() => {
+    if (body === "" && signature) {
+      setBody(
+        `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Velocity that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
+      );
+    }
+  }, [signature]);
+
+  const getRecipientCount = () => {
+    const list = lists.find((l) => l.id === selectedList);
+    return list?.memberCount ?? 0;
+  };
+
+  const getSelectedLabel = () => {
+    if (selectedList === "__create__") return null;
+    const list = lists.find((l) => l.id === selectedList);
+    return list ? `${list.name} (${list.memberCount})` : null;
+  };
+
+  const handleListChange = (value: string) => {
+    if (value === "__create__") {
+      setShowCreateModal(true);
+    } else {
+      setSelectedList(value);
+    }
+    setShowDropdown(false);
+  };
+
+  const resetCreateForm = () => {
+    setNewListName("");
+    setNewListDesc("");
+    setNewListEmails("");
+    setCreateError("");
+    setShowCreateModal(false);
+    setPendingListData(null);
+  };
+
+  const parseEmails = (raw: string) => {
+    const emailRegex = /^[a-zA-Z0-9]+(?:[.+_-][a-zA-Z0-9]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+    const lines = raw.split(/[\n,]+/).map((e) => e.trim()).filter(Boolean);
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    for (const email of lines) {
+      if (emailRegex.test(email)) valid.push(email);
+      else invalid.push(email);
+    }
+    return { valid, invalid };
+  };
+
+  const { valid: validEmails, invalid: invalidEmails } = parseEmails(newListEmails);
+
+  const handleCreateList = async () => {
+    setCreateError("");
+
+    if (!newListName.trim()) {
+      setCreateError("Title is required");
+      return;
+    }
+
+    if (validEmails.length === 0) {
+      setCreateError("Enter at least one valid email (e.g. user@example.com)");
+      return;
+    }
+
+    const listName = newListName;
+    const listDesc = newListDesc;
+    const rawEmails = newListEmails;
+
+    setPendingListData({ name: listName, desc: listDesc, emails: rawEmails });
+    setShowCreateModal(false);
+
+    try {
+      const list = await createList(listName, listDesc || undefined);
+      if (!list) {
+        setPendingListData(null);
+        setToast({ message: "Failed to create list", type: "error" });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+
+      setValidatingListId(list.id);
+      setFailedListId(null);
+
+      const addedIds: string[] = [];
+      for (const email of validEmails) {
+        const existing = recipients.find((r) => r.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          addedIds.push(existing.id);
+        } else {
+          const created = await addRecipient(email, email.split("@")[0]);
+          if (created) addedIds.push(created.id);
+        }
+      }
+
+      if (addedIds.length > 0) {
+        await addMembersToList(list.id, addedIds);
+      }
+
+      setValidatingListId(null);
+      setPendingListData(null);
+      setSelectedList(list.id);
+      await fetchLists();
+      setToast({ message: `List "${list.name}" created with ${addedIds.length} recipients`, type: "success" });
+      setTimeout(() => setToast(null), 3000);
+    } catch (e) {
+      setValidatingListId(null);
+      setFailedListId(pendingListData ? null : null);
+      setToast({ message: `Error creating list: ${String(e)}`, type: "error" });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  const reopenCreateModal = (name: string, desc: string, emails: string, error: string) => {
+    setNewListName(name);
+    setNewListDesc(desc);
+    setNewListEmails(emails);
+    setCreateError(error);
+    setShowCreateModal(true);
+  };
+
+  const jumpToInvalidEmail = (email: string) => {
+    setTimeout(() => {
+      const textarea = emailTextareaRef.current;
+      if (!textarea) return;
+      const text = textarea.value;
+      const idx = text.indexOf(email);
+      textarea.focus();
+      if (idx !== -1) {
+        textarea.setSelectionRange(idx, idx + email.length);
+        const linesBefore = text.substring(0, idx).split("\n").length;
+        const lineHeight = 18;
+        textarea.scrollTop = Math.max(0, (linesBefore - 3) * lineHeight);
+      }
+    }, 50);
+  };
+
+  const handleDragStart = (e: React.DragEvent, variable: string) => {
+    e.dataTransfer.setData("text/plain", variable);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const handleBodyDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const variable = e.dataTransfer.getData("text/plain");
+    if (!variable) return;
+
+    const el = e.currentTarget as HTMLDivElement;
+    el.focus();
+
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      if (el.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        range.insertNode(document.createTextNode(variable));
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        el.innerHTML += variable;
+      }
+    } else {
+      el.innerHTML += variable;
+    }
+    setBody(el.innerHTML);
+  };
+
+  const handleBodyDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
+  };
+
+  const handleBodyDragLeave = (e: React.DragEvent) => {
+    (e.currentTarget as HTMLDivElement).style.background = "rgba(0,0,0,0.2)";
+  };
+
+  const handleSubjectDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const variable = e.dataTransfer.getData("text/plain");
+    if (variable) setSubject((prev) => prev + variable);
+  };
+
+  const handleSubjectDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleSaveTemplate = async () => {
+    await addTemplate({
       name: subject || "Untitled Template",
       subject,
       bodyHtml: body,
       variables: systemVars.concat(customVars).map((v) => v.replace(/[{}]/g, "")),
-      createdAt: new Date(),
-    };
-    addTemplate(newTemplate);
+    });
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
   };
 
-  const handleSendNow = () => {
+  const handleSendNow = async () => {
     if (!activeAccount) return;
-    const recipientIds = to
-      ? to.split(",").map((_, i) => `r-imported-${Date.now()}-${i}`)
-      : recipients.filter((r) => r.status === "active").map((r) => r.id);
+    const count = getRecipientCount();
+    if (count === 0) return;
 
-    const campaign = {
-      id: `camp-${Date.now()}`,
+    await addCampaign({
+      id: "",
       name: subject || "Quick Send",
-      status: "running" as const,
-      templateId: selectedTemplate || undefined,
+      status: "draft",
+      templateId: undefined,
       createdAt: new Date(),
       sentCount: 0,
-      totalCount: recipientIds.length,
-    };
-    addCampaign(campaign);
-    startSending(campaign.id, recipientIds.length);
+      totalCount: count,
+    });
+
+    startSending(`camp-${Date.now()}`, count);
   };
 
-  const loadTemplate = (templateId: string) => {
-    const tpl = templates.find((t) => t.id === templateId);
-    if (tpl) {
-      setSubject(tpl.subject);
-      setBody(tpl.bodyHtml);
-      setSelectedTemplate(templateId);
-    }
-  };
+  const inputStyle = { width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 10, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" };
 
   return (
-    <div className="flex flex-col h-full">
-      <TopBar title="Bulk Management" searchPlaceholder="Search templates..." />
-
-      <div className="flex-1 p-8 flex gap-8">
-        <div className="flex-1 flex flex-col glass-panel rounded-2xl shadow-2xl overflow-hidden relative border border-primary/20">
-          <div className="bg-surface-container-highest/50 px-6 py-4 flex items-center justify-between border-b border-glass-stroke">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary">edit_note</span>
-              <h3 className="font-headline-md text-headline-md text-on-surface">New Message</h3>
-            </div>
-            <div className="flex gap-2">
-              <button className="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant">
-                <span className="material-symbols-outlined">minimize</span>
-              </button>
-              <button className="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="px-6 py-2 bg-surface-container-lowest/40 space-y-1">
-            <div className="flex items-center py-2 border-b border-glass-stroke">
-              <span className="w-20 text-on-surface-variant font-label-md text-label-md">To</span>
-              <input
-                className="flex-1 bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline-variant"
-                placeholder="Recipients (comma separated)..."
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-              <div className="flex gap-2 text-label-sm font-label-sm text-primary">
-                <button className="hover:underline">Cc</button>
-                <button className="hover:underline">Bcc</button>
-              </div>
-            </div>
-            <div className="flex items-center py-2 border-b border-glass-stroke">
-              <span className="w-20 text-on-surface-variant font-label-md text-label-md">Subject</span>
-              <input
-                className="flex-1 bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline-variant"
-                placeholder="Add a subject line"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="px-6 py-3 border-b border-glass-stroke bg-surface-container/30 flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="Bold">
-                <span className="material-symbols-outlined">format_bold</span>
-              </button>
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="Italic">
-                <span className="material-symbols-outlined">format_italic</span>
-              </button>
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="Underline">
-                <span className="material-symbols-outlined">format_underlined</span>
-              </button>
-              <div className="w-px h-6 bg-glass-stroke mx-1" />
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="List">
-                <span className="material-symbols-outlined">format_list_bulleted</span>
-              </button>
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="Link">
-                <span className="material-symbols-outlined">link</span>
-              </button>
-              <div className="w-px h-6 bg-glass-stroke mx-1" />
-              <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-primary/10 hover:text-primary rounded-lg transition-all text-label-md font-label-md">
-                <span className="material-symbols-outlined text-[18px]">data_object</span>
-                Variables
-              </button>
-              <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-primary/10 hover:text-primary rounded-lg transition-all text-label-md font-label-md">
-                <span className="material-symbols-outlined text-[18px]">temp_preferences_custom</span>
-                Templates
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="Attachment">
-                <span className="material-symbols-outlined">attach_file</span>
-              </button>
-              <button className="p-2 hover:bg-primary/10 hover:text-primary rounded-lg transition-all" title="More">
-                <span className="material-symbols-outlined">more_vert</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 p-8 bg-black/40 overflow-y-auto">
+    <div style={{ display: "flex", gap: 16, height: "100%" }}>
+      <div className="card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--stroke0)", display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* To - Custom Dropdown */}
+          <div ref={dropdownRef} style={{ position: "relative", display: "flex", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--stroke0)" }}>
+            <span style={{ width: 64, color: "var(--text2)", fontSize: 12 }}>To</span>
             <div
-              className="min-h-full outline-none text-body-lg font-body-lg leading-relaxed text-on-surface"
-              contentEditable
-              suppressContentEditableWarning
-              dangerouslySetInnerHTML={{ __html: body }}
-              onBlur={(e) => setBody(e.currentTarget.innerHTML)}
+              onClick={() => setShowDropdown(!showDropdown)}
+              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "6px 10px", borderRadius: 8, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)" }}
+            >
+              {getSelectedLabel() ? (
+                <span style={{ fontSize: 13, color: "var(--text0)" }}>{getSelectedLabel()}</span>
+              ) : (
+                <span style={{ fontSize: 13, color: "var(--text2)" }}>Select a list...</span>
+              )}
+              <span className="material-symbols-outlined" style={{ fontSize: 16, color: "var(--text2)", transition: "transform 0.15s", transform: showDropdown ? "rotate(180deg)" : "rotate(0)" }}>expand_more</span>
+            </div>
+
+            {showDropdown && (
+              <div style={{ position: "absolute", top: "100%", left: 64, right: 0, marginTop: 4, background: "var(--bg0)", border: "1px solid var(--stroke1)", borderRadius: 10, overflow: "hidden", zIndex: 50, boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+                <div
+                  onClick={() => handleListChange("__create__")}
+                  style={{ padding: "10px 14px", fontSize: 13, color: "var(--primary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--stroke0)", transition: "background 0.1s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+                  Create New List
+                </div>
+                {lists.length === 0 ? (
+                  <div style={{ padding: "14px 14px", fontSize: 12, color: "var(--text2)", textAlign: "center" }}>
+                    No lists yet
+                  </div>
+                ) : lists.map((list) => (
+                  <div
+                    key={list.id}
+                    onClick={() => handleListChange(list.id)}
+                    style={{
+                      padding: "10px 14px",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: selectedList === list.id ? "rgba(255,255,255,0.06)" : "transparent",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = selectedList === list.id ? "rgba(255,255,255,0.06)" : "transparent")}
+                  >
+                    <span style={{ color: "var(--text0)" }}>{list.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--text2)" }}>{list.memberCount}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Subject */}
+          <div style={{ display: "flex", alignItems: "center", padding: "8px 0" }}>
+            <span style={{ width: 64, color: "var(--text2)", fontSize: 12 }}>Subject</span>
+            <input
+              style={{ flex: 1, background: "transparent", border: "none", color: "var(--text0)", fontSize: 13, outline: "none" }}
+              placeholder="Add a subject line"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              onDrop={handleSubjectDrop}
+              onDragOver={handleSubjectDragOver}
             />
           </div>
-
-          <div className="p-6 bg-surface-container/60 border-t border-glass-stroke flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-xl overflow-hidden shadow-lg shadow-primary/30">
-                <Button variant="primary" icon="send" onClick={handleSendNow}>
-                  Send Now
-                </Button>
-                <button className="bg-primary-container text-on-primary-container px-3 py-3 border-l border-on-primary-container/20 hover:brightness-110 transition-all">
-                  <span className="material-symbols-outlined">keyboard_arrow_down</span>
-                </button>
-              </div>
-              <Button variant="secondary" icon="schedule">
-                Schedule
-              </Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="secondary" icon="save" onClick={handleSaveTemplate}>
-                {showSaved ? "Saved!" : "Save Template"}
-              </Button>
-              <button className="p-3 text-error hover:bg-error/10 rounded-xl transition-all">
-                <span className="material-symbols-outlined">delete</span>
-              </button>
-            </div>
-          </div>
         </div>
 
-        <div className="w-80 flex flex-col gap-6">
-          <div className="glass-panel p-6 rounded-2xl flex-1 flex flex-col border-tertiary/20">
-            <div className="flex items-center justify-between mb-6">
-              <h4 className="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
-                <span className="material-symbols-outlined text-tertiary">data_object</span>
-                Variables
-              </h4>
-              <button className="p-1.5 text-on-surface-variant hover:text-on-surface">
-                <span className="material-symbols-outlined">add_circle</span>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-              <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">
-                System Tags
-              </p>
-              <div className="grid gap-2">
-                {systemVars.map((v) => (
-                  <div
-                    key={v}
-                    className="group flex items-center justify-between p-3 rounded-xl bg-surface-container-high/40 border border-glass-stroke hover:border-tertiary/40 cursor-pointer transition-all"
-                    onClick={() => {
-                      navigator.clipboard.writeText(v);
-                    }}
-                  >
-                    <span className="font-mono text-label-md text-tertiary">{v}</span>
-                    <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 text-on-surface-variant text-[18px]">
-                      content_copy
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mt-4">
-                Custom Attributes
-              </p>
-              <div className="grid gap-2">
-                {customVars.map((v) => (
-                  <div
-                    key={v}
-                    className="group flex items-center justify-between p-3 rounded-xl bg-surface-container-high/40 border border-glass-stroke hover:border-tertiary/40 cursor-pointer transition-all"
-                    onClick={() => {
-                      navigator.clipboard.writeText(v);
-                    }}
-                  >
-                    <span className="font-mono text-label-md text-tertiary">{v}</span>
-                    <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 text-on-surface-variant text-[18px]">
-                      content_copy
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="mt-6 pt-4 border-t border-glass-stroke">
-              <div className="p-4 rounded-xl bg-tertiary/5 border border-tertiary/20">
-                <div className="flex items-center gap-2 mb-2 text-tertiary">
-                  <span className="material-symbols-outlined text-[20px]">info</span>
-                  <span className="text-label-sm font-label-sm">Pro Tip</span>
-                </div>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">
-                  Drag and drop tags directly into the editor for instant mapping.
-                </p>
-              </div>
-            </div>
-          </div>
+        {/* Body */}
+        <div style={{ flex: 1, padding: 18, background: "rgba(0,0,0,0.2)", overflow: "auto" }}>
+          <div
+            style={{ minHeight: "100%", outline: "none", fontSize: 14, lineHeight: 1.6, color: "var(--text0)" }}
+            contentEditable
+            suppressContentEditableWarning
+            dangerouslySetInnerHTML={{ __html: body }}
+            onBlur={(e) => setBody(e.currentTarget.innerHTML)}
+            onDrop={handleBodyDrop}
+            onDragOver={handleBodyDragOver}
+            onDragLeave={handleBodyDragLeave}
+          />
+        </div>
 
-          <div className="glass-panel p-6 rounded-2xl border-secondary/20 bg-secondary/5">
-            <h4 className="font-label-md text-label-md text-secondary flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-[20px]">bolt</span>
-              AI Optimization
-            </h4>
-            <p className="text-label-sm font-label-sm text-on-surface-variant mb-4">
-              Lumina AI suggests a subject line change for better open rates.
-            </p>
-            <button className="w-full py-2 bg-secondary/20 hover:bg-secondary/30 text-secondary border border-secondary/30 rounded-lg transition-all font-label-sm text-label-sm">
-              Apply Suggestion
+        {/* Footer */}
+        <div style={{ padding: 12, borderTop: "1px solid var(--stroke0)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleSendNow} className="pillBtn" type="button" disabled={getRecipientCount() === 0}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>send</span>
+              Send to {getRecipientCount()} recipients
             </button>
           </div>
-
-          {templates.length > 0 && (
-            <div className="glass-panel p-6 rounded-2xl border-primary/20">
-              <h4 className="font-label-md text-label-md text-primary flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-[20px]">description</span>
-                Load Template
-              </h4>
-              <div className="space-y-2">
-                {templates.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    onClick={() => loadTemplate(tpl.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all text-label-sm ${
-                      selectedTemplate === tpl.id
-                        ? "bg-primary/10 border-primary/30 text-primary"
-                        : "bg-surface-container-high/40 border-glass-stroke hover:border-primary/20 text-on-surface"
-                    }`}
-                  >
-                    <p className="font-medium">{tpl.name}</p>
-                    <p className="text-on-surface-variant text-[11px] mt-0.5 truncate">{tpl.subject}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleSaveTemplate} className="pillBtn" type="button">
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>save</span>
+              {showSaved ? "Saved!" : "Save Template"}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Right sidebar */}
+      <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Variables */}
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: "var(--text2)", marginBottom: 10 }}>Variables</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>System Tags</div>
+            {systemVars.map((v) => (
+              <div
+                key={v}
+                draggable
+                onDragStart={(e) => handleDragStart(e, v)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "grab", transition: "border-color 0.15s, background 0.15s" }}
+              >
+                <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--warn)" }}>{v}</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text2)" }}>drag_indicator</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 8 }}>Custom Attributes</div>
+            {customVars.map((v) => (
+              <div
+                key={v}
+                draggable
+                onDragStart={(e) => handleDragStart(e, v)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "grab", transition: "border-color 0.15s, background 0.15s" }}
+              >
+                <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--warn)" }}>{v}</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text2)" }}>drag_indicator</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Saved Lists Panel */}
+        {lists.length > 0 && (
+          <div className="card card--pad">
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Saved Lists</div>
+            <div style={{ display: "grid", gap: 6, maxHeight: 200, overflow: "auto" }}>
+              {lists.map((list) => {
+                const isFailed = failedListId === list.id;
+                const isValidating = validatingListId === list.id;
+                return (
+                  <div
+                    key={list.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: selectedList === list.id ? "rgba(255,255,255,0.08)" : "transparent",
+                      border: `1px solid ${isFailed ? "var(--bad)" : "var(--stroke0)"}`,
+                      cursor: validatingListId ? "default" : "pointer",
+                      opacity: isValidating && !isFailed ? 0.6 : 1,
+                    }}
+                    onClick={() => { if (!validatingListId) setSelectedList(list.id); }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                        {list.name}
+                        {isValidating && !isFailed && (
+                          <span className="spinner" style={{ width: 10, height: 10 }} />
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, color: isFailed ? "var(--bad)" : "var(--text2)" }}>
+                        {isFailed ? "Validation failed — click Fix" : `${list.memberCount} members`}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      {isFailed ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reopenCreateModal(
+                              pendingListData?.name ?? list.name,
+                              pendingListData?.desc ?? "",
+                              pendingListData?.emails ?? "",
+                              "Some emails are invalid. Please correct them."
+                            );
+                          }}
+                          style={{ background: "var(--bad)", border: "none", color: "#fff", cursor: "pointer", padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600 }}
+                          type="button"
+                        >
+                          Fix
+                        </button>
+                      ) : !validatingListId ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteList(list.id); if (selectedList === list.id) setSelectedList("__create__"); }}
+                          style={{ background: "none", border: "none", color: "var(--bad)", cursor: "pointer", padding: 4 }}
+                          type="button"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Create New List Modal */}
+      {showCreateModal && (
+        <div
+          key={createError ? "edit" : "create"}
+          style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", zIndex: 1000 }}
+          onClick={(e) => { if (e.target === e.currentTarget) resetCreateForm(); }}
+        >
+          <div className="card card--pad" style={{ width: 520, maxWidth: "90vw" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20, color: createError ? "var(--bad)" : "var(--primary)" }}>
+                {createError ? "edit" : "playlist_add"}
+              </span>
+              {createError ? "Edit Recipient List" : "Create New Recipient List"}
+            </div>
+
+            {createError && (
+              <div style={{ fontSize: 11, color: "var(--bad)", padding: "8px 12px", borderRadius: 8, background: "rgba(255,71,71,0.1)", marginBottom: 12 }}>{createError}</div>
+            )}
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Title *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Q4 Leads"
+                  value={newListName}
+                  onChange={(e) => { setNewListName(e.target.value); setCreateError(""); }}
+                  autoFocus
+                  style={{ ...inputStyle, borderColor: createError && !newListName.trim() ? "var(--bad)" : undefined }}
+                />
+                {createError && !newListName.trim() && (
+                  <div style={{ fontSize: 10, color: "var(--bad)" }}>Title is required</div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</label>
+                <input
+                  type="text"
+                  placeholder="Optional description"
+                  value={newListDesc}
+                  onChange={(e) => setNewListDesc(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 10, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email List *</label>
+                <textarea
+                  ref={emailTextareaRef}
+                  placeholder={"Paste emails here (one per line or comma separated)\ne.g. john@example.com, jane@test.com"}
+                  value={newListEmails}
+                  onChange={(e) => { setNewListEmails(e.target.value); setCreateError(""); }}
+                  style={{ ...inputStyle, minHeight: 100, resize: "vertical", fontFamily: "monospace", lineHeight: 1.5, fontSize: 12, borderColor: createError && validEmails.length === 0 ? "var(--bad)" : invalidEmails.length > 0 ? "var(--warn)" : undefined }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {validEmails.length > 0 && (
+                    <span style={{ fontSize: 10, color: "var(--good)" }}>{validEmails.length} valid</span>
+                  )}
+                  {invalidEmails.length > 0 && (
+                    <span style={{ fontSize: 10, color: "var(--bad)" }}>{invalidEmails.length} invalid</span>
+                  )}
+                  {newListEmails.trim() === "" && (
+                    <span style={{ fontSize: 10, color: "var(--text2)" }}>Enter one email per line or separated by commas</span>
+                  )}
+                </div>
+                {invalidEmails.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {invalidEmails.map((email, i) => (
+                      <span
+                        key={i}
+                        onClick={(e) => { e.stopPropagation(); jumpToInvalidEmail(email); }}
+                        style={{ fontSize: 10, color: "var(--bad)", background: "rgba(255,71,71,0.1)", padding: "2px 6px", borderRadius: 4, cursor: "pointer", transition: "background 0.1s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.2)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,71,71,0.1)")}
+                      >
+                        {email}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--stroke0)" }}>
+              <button className="pillBtn" onClick={resetCreateForm} type="button" style={{ fontSize: 12 }}>Cancel</button>
+              <button
+                className="pillBtn"
+                onClick={handleCreateList}
+                type="button"
+                style={{ fontSize: 12 }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>save</span>
+                Save List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
+      )}
     </div>
   );
 }

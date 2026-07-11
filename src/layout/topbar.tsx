@@ -1,50 +1,101 @@
-import { useNavigate } from "react-router-dom";
-import { SearchInput } from "../components/ui/search-input";
+import { useLocation } from "react-router-dom";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
-interface TopBarProps {
-  title: string;
-  searchPlaceholder?: string;
-  onSearch?: (query: string) => void;
-}
+const titleByPath: Record<string, string> = {
+  "/": "Dashboard",
+  "/compose": "Compose",
+  "/recipients": "Recipients",
+  "/campaigns": "Campaigns",
+  "/smtp": "SMTP Accounts",
+  "/settings": "Settings",
+  "/templates": "Templates",
+  "/reports": "Reports",
+};
 
-export function TopBar({ title, searchPlaceholder = "Search...", onSearch }: TopBarProps) {
-  const navigate = useNavigate();
+export function TopBar() {
+  const location = useLocation();
+  const title = titleByPath[location.pathname] || "Dashboard";
+
+  const handleMinimize = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try { await getCurrentWindow().minimize(); } catch (err) { console.error("minimize failed", err); }
+  };
+  const handleMaximize = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try { await getCurrentWindow().toggleMaximize(); } catch (err) { console.error("maximize failed", err); }
+  };
+  const handleClose = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try { await getCurrentWindow().close(); } catch (err) { console.error("close failed", err); }
+  };
+
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+    getCurrentWindow().startDragging();
+  };
 
   return (
-    <header className="w-full h-16 sticky top-0 flex items-center justify-between px-6 bg-background/50 backdrop-blur-md border-b border-glass-stroke z-40">
-      <div className="flex items-center gap-6">
-        <h2 className="font-headline-md text-headline-md text-on-surface whitespace-nowrap">
-          {title}
-        </h2>
-        <div className="w-64">
-          <SearchInput placeholder={searchPlaceholder} onSearch={onSearch} />
-        </div>
-      </div>
+    <header
+      onMouseDown={handleDragMouseDown}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "14px 14px 10px 18px",
+        userSelect: "none",
+        position: "relative",
+        WebkitAppRegion: "drag",
+      } as React.CSSProperties}
+    >
+      <div style={{ fontSize: 13, letterSpacing: "0.2px", color: "var(--text1)" }}>{title}</div>
 
-      <div className="flex items-center gap-6">
-        <nav className="hidden md:flex items-center gap-4">
-          <button
-            onClick={() => navigate("/reports")}
-            className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-all"
-          >
-            Analytics
-          </button>
-          <button
-            onClick={() => navigate("/templates")}
-            className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-all"
-          >
-            Templates
-          </button>
-        </nav>
-        <div className="h-6 w-[1px] bg-glass-stroke" />
-        <div className="flex items-center gap-3">
-          <button className="p-2 text-on-surface-variant hover:text-primary transition-all">
-            <span className="material-symbols-outlined">notifications</span>
-          </button>
-          <div className="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center overflow-hidden border border-glass-stroke">
-            <span className="material-symbols-outlined text-sm">person</span>
-          </div>
-        </div>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: "flex", alignItems: "center", gap: 8, WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <button className="pillBtn" type="button" aria-label="Search">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
+        </button>
+        <button className="pillBtn" type="button" aria-label="Notifications">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>notifications</span>
+        </button>
+        <div style={{ width: 1, height: 18, background: "var(--stroke0)", margin: "0 4px" }} />
+        <button
+          onClick={handleMinimize}
+          style={{
+            width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none", background: "transparent", color: "var(--text2)", borderRadius: 6, cursor: "pointer",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "var(--text0)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text2)"; }}
+          aria-label="Minimize"
+        >
+          <svg width="10" height="1.5" viewBox="0 0 10 1.5" fill="currentColor"><rect width="10" height="1.5" rx="0.75" /></svg>
+        </button>
+        <button
+          onClick={handleMaximize}
+          style={{
+            width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none", background: "transparent", color: "var(--text2)", borderRadius: 6, cursor: "pointer",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "var(--text0)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text2)"; }}
+          aria-label="Maximize"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="0.7" y="0.7" width="8.6" height="8.6" rx="1.5" /></svg>
+        </button>
+        <button
+          onClick={handleClose}
+          style={{
+            width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none", background: "transparent", color: "var(--text2)", borderRadius: 6, cursor: "pointer",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,71,71,0.4)"; e.currentTarget.style.color = "#fff"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text2)"; }}
+          aria-label="Close"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5" /><line x1="8.5" y1="1.5" x2="1.5" y2="8.5" /></svg>
+        </button>
       </div>
     </header>
   );

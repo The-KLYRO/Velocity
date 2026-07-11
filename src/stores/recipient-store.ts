@@ -1,54 +1,133 @@
 import { create } from "zustand";
 import type { Recipient, RecipientStatus } from "../types";
+import * as api from "../lib/tauri-api";
 
 interface RecipientState {
   recipients: Recipient[];
+  total: number;
   selectedIds: Set<string>;
   filter: RecipientStatus | "all";
   searchQuery: string;
-  addRecipient: (recipient: Recipient) => void;
+  isLoading: boolean;
+  error: string | null;
+  page: number;
+  perPage: number;
+  fetchRecipients: () => Promise<void>;
+  fetchSearchResults: (query: string) => Promise<void>;
+  addRecipient: (email: string, name: string, company?: string) => Promise<Recipient | null>;
   addRecipients: (recipients: Recipient[]) => void;
-  removeRecipient: (id: string) => void;
-  removeRecipients: (ids: string[]) => void;
+  removeRecipient: (id: string) => Promise<void>;
+  removeRecipients: (ids: string[]) => Promise<void>;
+  importCsv: (filePath: string) => Promise<Recipient[]>;
   toggleSelection: (id: string) => void;
   selectAll: (ids: string[]) => void;
   clearSelection: () => void;
   setFilter: (filter: RecipientStatus | "all") => void;
   setSearchQuery: (query: string) => void;
+  setPage: (page: number) => void;
 }
 
-const mockRecipients: Recipient[] = [
-  { id: "r-1", email: "julianne.s@acme-corp.io", name: "Julianne Smith", company: "Acme Corp", status: "active", tags: ["enterprise", "q4"], createdAt: new Date("2024-09-15"), lastSent: new Date("2024-10-24") },
-  { id: "r-2", email: "m.reed@stellar-dynamics.com", name: "Marcus Reed", company: "Stellar Dynamics", status: "active", tags: ["startup", "tech"], createdAt: new Date("2024-08-20"), lastSent: new Date("2024-10-23") },
-  { id: "r-3", email: "ben@outdated-domain.net", name: "Ben Kessler", company: "Nebula Soft", status: "bounced", tags: ["old"], createdAt: new Date("2024-07-10"), lastSent: undefined },
-  { id: "r-4", email: "elena.l@prism-design.co", name: "Elena Lopez", company: "Prism Design", status: "active", tags: ["design", "creative"], createdAt: new Date("2024-09-01"), lastSent: new Date("2024-10-22") },
-  { id: "r-5", email: "fischer.d@logistics-v2.com", name: "David Fischer", company: "Logistics V2", status: "active", tags: ["logistics", "enterprise"], createdAt: new Date("2024-06-15"), lastSent: new Date("2024-10-20") },
-  { id: "r-6", email: "sarah.chen@techflow.io", name: "Sarah Chen", company: "TechFlow", status: "active", tags: ["saas", "growth"], createdAt: new Date("2024-10-01"), lastSent: new Date("2024-10-24") },
-  { id: "r-7", email: "invalid@nowhere.xyz", name: "Ghost User", company: "Nowhere Inc", status: "invalid", tags: ["test"], createdAt: new Date("2024-10-10"), lastSent: undefined },
-  { id: "r-8", email: "alex.m@cloudnine.dev", name: "Alex Morgan", company: "CloudNine", status: "active", tags: ["cloud", "devops"], createdAt: new Date("2024-08-05"), lastSent: new Date("2024-10-19") },
-  { id: "r-9", email: "opt-out@newsletter.com", name: "Pat Johnson", company: "Newsletter Co", status: "unsubscribed", tags: ["unsub"], createdAt: new Date("2024-05-20"), lastSent: new Date("2024-06-10") },
-  { id: "r-10", email: "priya.r@datawave.in", name: "Priya Rao", company: "DataWave", status: "active", tags: ["analytics", "enterprise"], createdAt: new Date("2024-09-12"), lastSent: new Date("2024-10-21") },
-];
-
-export const useRecipientStore = create<RecipientState>((set) => ({
-  recipients: mockRecipients,
+export const useRecipientStore = create<RecipientState>((set, get) => ({
+  recipients: [],
+  total: 0,
   selectedIds: new Set(),
   filter: "all",
   searchQuery: "",
-  addRecipient: (recipient) =>
-    set((state) => ({ recipients: [...state.recipients, recipient] })),
+  isLoading: false,
+  error: null,
+  page: 1,
+  perPage: 50,
+
+  fetchRecipients: async () => {
+    const { filter, page, perPage } = get();
+    set({ isLoading: true, error: null });
+    try {
+      const filterParam = filter === "all" ? undefined : filter;
+      const result = await api.fetchRecipients(filterParam, page, perPage);
+      set({ recipients: result.recipients, total: result.total, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  fetchSearchResults: async (query) => {
+    if (!query.trim()) {
+      get().fetchRecipients();
+      return;
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const result = await api.searchRecipients(query, 1, get().perPage);
+      set({ recipients: result.recipients, total: result.total, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  addRecipient: async (email, name, company) => {
+    try {
+      const recipient = await api.addRecipient(email, name, company);
+      set((state) => ({
+        recipients: [recipient, ...state.recipients],
+        total: state.total + 1,
+      }));
+      return recipient;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
   addRecipients: (recipients) =>
-    set((state) => ({ recipients: [...state.recipients, ...recipients] })),
-  removeRecipient: (id) =>
     set((state) => ({
-      recipients: state.recipients.filter((r) => r.id !== id),
-      selectedIds: (() => { const s = new Set(state.selectedIds); s.delete(id); return s; })(),
+      recipients: [...recipients, ...state.recipients],
+      total: state.total + recipients.length,
     })),
-  removeRecipients: (ids) =>
-    set((state) => ({
-      recipients: state.recipients.filter((r) => !ids.includes(r.id)),
-      selectedIds: new Set(),
-    })),
+
+  removeRecipient: async (id) => {
+    try {
+      await api.deleteRecipients([id]);
+      set((state) => ({
+        recipients: state.recipients.filter((r) => r.id !== id),
+        total: state.total - 1,
+        selectedIds: (() => {
+          const s = new Set(state.selectedIds);
+          s.delete(id);
+          return s;
+        })(),
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  removeRecipients: async (ids) => {
+    try {
+      await api.deleteRecipients(ids);
+      set((state) => ({
+        recipients: state.recipients.filter((r) => !ids.includes(r.id)),
+        total: state.total - ids.length,
+        selectedIds: new Set(),
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  importCsv: async (filePath) => {
+    try {
+      const imported = await api.importRecipientsCsv(filePath);
+      set((state) => ({
+        recipients: [...imported, ...state.recipients],
+        total: state.total + imported.length,
+      }));
+      return imported;
+    } catch (e) {
+      set({ error: String(e) });
+      return [];
+    }
+  },
+
   toggleSelection: (id) =>
     set((state) => {
       const newSelected = new Set(state.selectedIds);
@@ -59,8 +138,19 @@ export const useRecipientStore = create<RecipientState>((set) => ({
       }
       return { selectedIds: newSelected };
     }),
+
   selectAll: (ids) => set({ selectedIds: new Set(ids) }),
   clearSelection: () => set({ selectedIds: new Set() }),
-  setFilter: (filter) => set({ filter }),
+
+  setFilter: (filter) => {
+    set({ filter, page: 1 });
+    setTimeout(() => get().fetchRecipients(), 0);
+  },
+
   setSearchQuery: (query) => set({ searchQuery: query }),
+
+  setPage: (page) => {
+    set({ page });
+    setTimeout(() => get().fetchRecipients(), 0);
+  },
 }));

@@ -1,70 +1,83 @@
 import { create } from "zustand";
 import type { Template } from "../types";
+import * as api from "../lib/tauri-api";
 
 interface TemplateState {
   templates: Template[];
   activeTemplate: Template | null;
-  addTemplate: (template: Template) => void;
-  removeTemplate: (id: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  fetchTemplates: () => Promise<void>;
+  addTemplate: (template: Omit<Template, "id" | "createdAt">) => Promise<Template | null>;
+  removeTemplate: (id: string) => Promise<void>;
   setActiveTemplate: (template: Template | null) => void;
-  updateTemplate: (id: string, updates: Partial<Template>) => void;
+  updateTemplate: (id: string, updates: Partial<Template>) => Promise<void>;
 }
 
-const mockTemplates: Template[] = [
-  {
-    id: "tpl-1",
-    name: "Welcome Series",
-    subject: "Welcome to {{company}}, {{first_name}}!",
-    bodyHtml: "<p>Hi {{first_name}},</p><p>We're thrilled to have you on board. At {{company}}, we're committed to helping you succeed.</p><p>Best regards,<br>The {{company}} Team</p>",
-    bodyText: "Hi {{first_name}},\n\nWe're thrilled to have you on board.\n\nBest regards,\nThe {{company}} Team",
-    variables: ["first_name", "company", "email", "industry", "role"],
-    createdAt: new Date("2024-10-20"),
-  },
-  {
-    id: "tpl-2",
-    name: "Newsletter Monthly",
-    subject: "Your monthly update from {{company}}",
-    bodyHtml: "<p>Hi {{first_name}},</p><p>Here's what happened this month at {{company}}:</p><ul><li>New feature launches</li><li>Industry insights</li><li>Upcoming events</li></ul>",
-    variables: ["first_name", "company"],
-    createdAt: new Date("2024-10-15"),
-  },
-  {
-    id: "tpl-3",
-    name: "Re-engagement",
-    subject: "We miss you, {{first_name}}!",
-    bodyHtml: "<p>Hi {{first_name}},</p><p>It's been a while since your last visit. We've made some exciting updates at {{company}} that we think you'll love.</p><p>Come back and see what's new!</p>",
-    variables: ["first_name", "company"],
-    createdAt: new Date("2024-10-10"),
-  },
-  {
-    id: "tpl-4",
-    name: "Product Launch",
-    subject: "Introducing our latest product",
-    bodyHtml: "<p>Hi {{first_name}},</p><p>We're excited to announce our newest product at {{company}}. Built for teams like yours in the {{industry}} space, it's designed to streamline your workflow.</p><p>Request early access today.</p>",
-    variables: ["first_name", "company", "industry", "role", "last_order_id", "email"],
-    createdAt: new Date("2024-10-01"),
-  },
-];
-
 export const useTemplateStore = create<TemplateState>((set) => ({
-  templates: mockTemplates,
+  templates: [],
   activeTemplate: null,
-  addTemplate: (template) =>
-    set((state) => ({ templates: [...state.templates, template] })),
-  removeTemplate: (id) =>
-    set((state) => ({
-      templates: state.templates.filter((t) => t.id !== id),
-      activeTemplate: state.activeTemplate?.id === id ? null : state.activeTemplate,
-    })),
+  isLoading: false,
+  error: null,
+
+  fetchTemplates: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const templates = await api.fetchTemplates();
+      set({ templates, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  addTemplate: async (template) => {
+    try {
+      const created = await api.createTemplate(
+        template.name,
+        template.subject,
+        template.bodyHtml,
+        template.bodyText,
+        template.variables
+      );
+      set((state) => ({ templates: [created, ...state.templates] }));
+      return created;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
+  removeTemplate: async (id) => {
+    try {
+      await api.deleteTemplate(id);
+      set((state) => ({
+        templates: state.templates.filter((t) => t.id !== id),
+        activeTemplate:
+          state.activeTemplate?.id === id ? null : state.activeTemplate,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   setActiveTemplate: (template) => set({ activeTemplate: template }),
-  updateTemplate: (id, updates) =>
-    set((state) => ({
-      templates: state.templates.map((t) =>
-        t.id === id ? { ...t, ...updates } : t
-      ),
-      activeTemplate:
-        state.activeTemplate?.id === id
-          ? { ...state.activeTemplate, ...updates }
-          : state.activeTemplate,
-    })),
+
+  updateTemplate: async (id, updates) => {
+    try {
+      const updated = await api.updateTemplate(id, {
+        name: updates.name,
+        subject: updates.subject,
+        bodyHtml: updates.bodyHtml,
+        bodyText: updates.bodyText,
+        variables: updates.variables,
+      });
+      set((state) => ({
+        templates: state.templates.map((t) => (t.id === id ? updated : t)),
+        activeTemplate:
+          state.activeTemplate?.id === id ? updated : state.activeTemplate,
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
 }));

@@ -76,6 +76,22 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
             FOREIGN KEY (recipient_id) REFERENCES recipients(id)
         );
+
+        CREATE TABLE IF NOT EXISTS recipient_lists (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS recipient_list_members (
+            list_id TEXT NOT NULL,
+            recipient_id TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (list_id, recipient_id),
+            FOREIGN KEY (list_id) REFERENCES recipient_lists(id) ON DELETE CASCADE,
+            FOREIGN KEY (recipient_id) REFERENCES recipients(id) ON DELETE CASCADE
+        );
         "#,
     )
     .execute(pool)

@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-import { TopBar } from "../layout/topbar";
-import { Button, Tabs, Badge, Pagination, Avatar } from "../components/ui";
+import { useEffect } from "react";
+import { Button, Badge } from "../components/ui";
 import { useRecipientStore } from "../stores/recipient-store";
 
 const tabs = [
@@ -10,138 +9,135 @@ const tabs = [
   { id: "bounced", label: "Bounced" },
 ];
 
-function formatDate(d: Date | undefined): string {
-  if (!d) return "Never";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 export function RecipientsPage() {
-  const [activeTab, setActiveTab] = useState("all");
-
   const recipients = useRecipientStore((s) => s.recipients);
+  const total = useRecipientStore((s) => s.total);
   const selectedIds = useRecipientStore((s) => s.selectedIds);
-  const searchQuery = useRecipientStore((s) => s.searchQuery);
+  const filter = useRecipientStore((s) => s.filter);
+  const isLoading = useRecipientStore((s) => s.isLoading);
+  const fetchRecipients = useRecipientStore((s) => s.fetchRecipients);
+  const fetchSearchResults = useRecipientStore((s) => s.fetchSearchResults);
   const setFilter = useRecipientStore((s) => s.setFilter);
-  const setSearchQuery = useRecipientStore((s) => s.setSearchQuery);
   const toggleSelection = useRecipientStore((s) => s.toggleSelection);
-  const selectAll = useRecipientStore((s) => s.selectAll);
   const removeRecipients = useRecipientStore((s) => s.removeRecipients);
-  const clearSelection = useRecipientStore((s) => s.clearSelection);
+  const setSearchQuery = useRecipientStore((s) => s.setSearchQuery);
+  const importCsv = useRecipientStore((s) => s.importCsv);
 
-  const filteredRecipients = useMemo(() => {
-    let result = recipients;
-
-    if (activeTab !== "all") {
-      result = result.filter((r) => r.status === activeTab);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.name.toLowerCase().includes(q) ||
-          r.email.toLowerCase().includes(q)
-      );
-    }
-
-    return result;
-  }, [recipients, activeTab, searchQuery]);
+  useEffect(() => {
+    fetchRecipients();
+  }, [fetchRecipients]);
 
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
     setFilter(tab as "all" | "active" | "bounced" | "unsubscribed");
   };
 
-  const handleBulkDelete = () => {
-    removeRecipients(Array.from(selectedIds));
-    clearSelection();
+  const handleBulkDelete = async () => {
+    await removeRecipients(Array.from(selectedIds));
   };
 
-  const allSelected =
-    filteredRecipients.length > 0 &&
-    filteredRecipients.every((r) => selectedIds.has(r.id));
+  const handleImport = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        await importCsv(file.name);
+      }
+    };
+    input.click();
+  };
 
-  const handleSelectAll = () => {
-    if (allSelected) {
-      clearSelection();
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim()) {
+      fetchSearchResults(value);
     } else {
-      selectAll(filteredRecipients.map((r) => r.id));
+      fetchRecipients();
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <TopBar title="Recipient Manager" searchPlaceholder="Search recipients, tags, or domains..." onSearch={setSearchQuery} />
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`pillBtn`}
+              style={{
+                borderColor: filter === tab.id ? "var(--stroke1)" : "transparent",
+                color: filter === tab.id ? "var(--text0)" : "var(--text2)",
+              }}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button variant="secondary" icon="upload" onClick={handleImport}>
+            Import CSV
+          </Button>
+          <Button variant="danger" icon="delete" onClick={handleBulkDelete} disabled={selectedIds.size === 0}>
+            Bulk Delete ({selectedIds.size})
+          </Button>
+        </div>
+      </div>
 
-      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <Tabs tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
-            <div className="flex items-center gap-3">
-              <Button variant="secondary" icon="upload">
-                Import CSV
-              </Button>
-              <Button variant="primary" icon="verified">
-                Validate Emails
-              </Button>
-              <Button variant="danger" icon="delete" onClick={handleBulkDelete}>
-                Bulk Delete
-              </Button>
-            </div>
+      <div style={{ marginBottom: 12 }}>
+        <input
+          type="text"
+          placeholder="Search by name, email, or company..."
+          onChange={(e) => handleSearch(e.target.value)}
+          style={{ width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 12, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" }}
+        />
+      </div>
+
+      {isLoading ? (
+        <div style={{ textAlign: "center", padding: 40, color: "var(--text2)" }}>Loading recipients...</div>
+      ) : (
+        <div style={{ width: "100%" }}>
+          <div className="historyHeader">
+            <div></div>
+            <div>Recipient Name</div>
+            <div>Email Address</div>
+            <div>Company</div>
+            <div>Status</div>
           </div>
 
-          <div className="w-full space-y-2">
-            <div className="grid grid-cols-12 gap-4 px-6 py-4 text-on-surface-variant font-label-sm uppercase tracking-wider">
-              <div className="col-span-1 flex items-center">
-                <input
-                  className="rounded bg-surface-container-highest border-glass-stroke text-primary focus:ring-primary/20"
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={handleSelectAll}
-                />
+          <div>
+            {recipients.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "var(--text2)" }}>
+                No recipients found. Import a CSV or add recipients manually.
               </div>
-              <div className="col-span-3">Recipient Name</div>
-              <div className="col-span-3">Email Address</div>
-              <div className="col-span-2">Company</div>
-              <div className="col-span-1 text-center">Status</div>
-              <div className="col-span-2 text-right">Last Sent</div>
-            </div>
-
-            <div className="space-y-3">
-              {filteredRecipients.map((recipient) => (
-                <div key={recipient.id} className="table-row grid grid-cols-12 gap-4 px-6 py-4 bg-surface-container-lowest/40 border border-glass-stroke rounded-2xl items-center">
-                  <div className="col-span-1 flex items-center">
-                    <input
-                      className="rounded bg-surface-container-highest border-glass-stroke text-primary focus:ring-primary/20"
-                      type="checkbox"
-                      checked={selectedIds.has(recipient.id)}
-                      onChange={() => toggleSelection(recipient.id)}
-                    />
-                  </div>
-                  <div className="col-span-3 flex items-center gap-3">
-                    <Avatar name={recipient.name} />
-                    <div>
-                      <p className="text-on-surface font-semibold text-body-md">{recipient.name}</p>
-                    </div>
-                  </div>
-                  <div className="col-span-3 text-on-surface-variant font-label-md">{recipient.email}</div>
-                  <div className="col-span-2 text-on-surface-variant font-label-md">{recipient.company}</div>
-                  <div className="col-span-1 flex justify-center">
-                    <Badge status={recipient.status} />
-                  </div>
-                  <div className="col-span-2 text-right text-on-surface-variant text-label-md">{formatDate(recipient.lastSent)}</div>
+            ) : recipients.map((recipient) => (
+              <div className="historyRow" key={recipient.id}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(recipient.id)}
+                    onChange={() => toggleSelection(recipient.id)}
+                    style={{ accentColor: "var(--text0)" }}
+                  />
                 </div>
-              ))}
-            </div>
+                <div className="cellMain">{recipient.name}</div>
+                <div className="cellSub" style={{ fontSize: 12 }}>{recipient.email}</div>
+                <div className="cellSub" style={{ fontSize: 12 }}>{recipient.company}</div>
+                <div>
+                  <Badge status={recipient.status} />
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      )}
 
-          <div className="flex items-center justify-between pt-6 border-t border-glass-stroke text-on-surface-variant">
-            <p className="text-label-md">
-              Showing <span className="text-on-surface font-semibold">1-{filteredRecipients.length}</span> of{" "}
-              <span className="text-on-surface font-semibold">{recipients.length}</span> recipients
-            </p>
-            <Pagination currentPage={1} totalPages={1} onPageChange={() => {}} />
-          </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--stroke0)", marginTop: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--text2)" }}>
+          Showing <span style={{ color: "var(--text0)" }}>{recipients.length}</span> of{" "}
+          <span style={{ color: "var(--text0)" }}>{total}</span> recipients
         </div>
       </div>
     </div>

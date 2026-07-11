@@ -16,37 +16,19 @@ export function StatCard({
   value,
   trend,
   trendUp = true,
-  icon,
-  sparkline,
-  children,
   className = "",
 }: StatCardProps) {
   return (
-    <div className={`glass-card rounded-2xl p-6 flex flex-col gap-2 ${className}`}>
-      <div className="flex justify-between items-start">
-        <span className="text-label-sm text-outline uppercase tracking-wider">
-          {label}
-        </span>
-        {icon && (
-          <span className="material-symbols-outlined text-primary">{icon}</span>
-        )}
-      </div>
-      <div className="flex items-baseline gap-3">
-        <span className="font-display-lg text-primary neon-text-glow">
-          {value}
-        </span>
+    <div className={`card kpi ${className}`}>
+      <div className="kpiLabel">{label}</div>
+      <div className="kpiValueRow">
+        <div className="kpiValue">{value}</div>
         {trend && (
-          <span
-            className={`text-label-sm ${
-              trendUp ? "text-green-400" : "text-error"
-            }`}
-          >
+          <div className={`delta ${trendUp ? "delta--pos" : "delta--neg"}`}>
             {trend}
-          </span>
+          </div>
         )}
       </div>
-      {sparkline && <div className="mt-4 h-12 w-full">{sparkline}</div>}
-      {children}
     </div>
   );
 }
