@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lumina_velocity_lib::run()
+    velocity_lib::run()
 }

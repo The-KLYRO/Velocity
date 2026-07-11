@@ -103,6 +103,17 @@ export function SettingsPage() {
       await fetchAccounts();
       setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
       showToastMessage("Account added successfully");
+
+      try {
+        const result = await testConnection(newAccount.email, newAccount.password, newAccount.host, Number(newAccount.port) || 587);
+        if (result.connected) {
+          await updateAccount(saved.id, { isConnected: true });
+          await fetchAccounts();
+          showToastMessage("Account connected successfully");
+        }
+      } catch {
+        // connection test failed silently — account stays disconnected
+      }
     }
   };
 

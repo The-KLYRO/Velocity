@@ -391,11 +391,29 @@ export function ComposePage() {
     setBody(el.innerHTML);
   };
 
+  const cleanBodyForSend = (html: string): string => {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    tmp.querySelectorAll(".img-remove-btn").forEach((el) => el.remove());
+    tmp.querySelectorAll(".img-wrapper").forEach((wrapper) => {
+      const img = wrapper.querySelector("img");
+      if (img) {
+        wrapper.parentNode?.insertBefore(img, wrapper);
+      }
+      wrapper.remove();
+    });
+    tmp.querySelectorAll("img.img-wrapped").forEach((img) => {
+      img.classList.remove("img-wrapped");
+      (img as HTMLElement).style.pointerEvents = "";
+    });
+    return tmp.innerHTML;
+  };
+
   const handleSaveTemplate = async () => {
     await addTemplate({
       name: subject || "Untitled Template",
       subject,
-      bodyHtml: body,
+      bodyHtml: cleanBodyForSend(body),
       variables: systemVars.concat(customVars).map((v) => v.replace(/[{}]/g, "")),
     });
     setShowSaved(true);
@@ -463,7 +481,7 @@ export function ComposePage() {
         campaignId: targetCampaignId,
         broadcastId,
         subject,
-        bodyHtml: body,
+        bodyHtml: cleanBodyForSend(body),
         smtpHost: activeAccount.host,
         smtpPort: activeAccount.port,
         smtpEmail: activeAccount.email,
