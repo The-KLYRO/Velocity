@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Tauri v2 desktop app — "Lumina Velocity" bulk email management tool. React + TypeScript frontend, Rust backend. Currently greenfield: only `UI/` design assets exist.
+Tauri v2 desktop app — "Velocity" bulk email management tool. React + TypeScript frontend, Rust backend. Currently greenfield: only `UI/` design assets exist.
 
 ## Tech Stack
 

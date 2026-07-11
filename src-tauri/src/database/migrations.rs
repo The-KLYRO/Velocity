@@ -1,16 +1,32 @@
 use sqlx::sqlite::SqlitePool;
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    // Create tables for fresh installs
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS campaigns (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'draft',
-            template_id TEXT,
+            description TEXT,
+            recipient_list_id TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            broadcast_count INTEGER NOT NULL DEFAULT 0,
+            last_broadcast_at TEXT,
+            total_sent INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
+            FOREIGN KEY (recipient_list_id) REFERENCES recipient_lists(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS broadcasts (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            template_id TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
             sent_count INTEGER NOT NULL DEFAULT 0,
-            total_count INTEGER NOT NULL DEFAULT 0
+            total_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS recipients (
@@ -37,6 +53,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         CREATE TABLE IF NOT EXISTS smtp_accounts (
             id TEXT PRIMARY KEY,
             email TEXT NOT NULL,
+            password TEXT,
             host TEXT NOT NULL,
             port INTEGER NOT NULL,
             encryption TEXT NOT NULL DEFAULT 'starttls',
@@ -96,6 +113,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+
+    // Upgrade existing campaigns table
+    let _ = sqlx::query("ALTER TABLE campaigns ADD COLUMN description TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE campaigns ADD COLUMN recipient_list_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE campaigns ADD COLUMN broadcast_count INTEGER NOT NULL DEFAULT 0").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE campaigns ADD COLUMN last_broadcast_at TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE campaigns ADD COLUMN total_sent INTEGER NOT NULL DEFAULT 0").execute(pool).await;
+
+    // Migrate old campaign data
+    let _ = sqlx::query("UPDATE campaigns SET total_sent = sent_count WHERE total_sent = 0 AND sent_count > 0").execute(pool).await;
+    let _ = sqlx::query("UPDATE campaigns SET status = 'active' WHERE status = 'draft'").execute(pool).await;
+
+    // Upgrade smtp_accounts table
+    let _ = sqlx::query("ALTER TABLE smtp_accounts ADD COLUMN password TEXT").execute(pool).await;
 
     Ok(())
 }

@@ -1,4 +1,6 @@
-export type CampaignStatus = "draft" | "running" | "paused" | "completed" | "failed";
+export type CampaignStatus = "active" | "paused" | "archived";
+
+export type BroadcastStatus = "draft" | "running" | "paused" | "completed" | "failed";
 
 export type RecipientStatus = "active" | "unsubscribed" | "bounced" | "invalid";
 
@@ -13,11 +15,24 @@ export type QueueStatus = "pending" | "processing" | "sent" | "failed" | "cancel
 export interface Campaign {
   id: string;
   name: string;
+  description?: string;
+  recipientListId?: string;
   status: CampaignStatus;
-  templateId?: string;
   createdAt: Date;
+  broadcastCount: number;
+  lastBroadcastAt?: Date;
+  totalSent: number;
+}
+
+export interface Broadcast {
+  id: string;
+  campaignId: string;
+  subject: string;
+  templateId?: string;
+  status: BroadcastStatus;
   sentCount: number;
   totalCount: number;
+  createdAt: Date;
 }
 
 export interface Recipient {
@@ -44,6 +59,7 @@ export interface Template {
 export interface SmtpAccount {
   id: string;
   email: string;
+  password?: string;
   host: string;
   port: number;
   encryption: SmtpEncryption;

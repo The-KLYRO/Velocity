@@ -12,3 +12,6 @@ export { Pagination } from "./pagination";
 export { Toast } from "./toast";
 export { Modal } from "./modal";
 export { DropdownMenu } from "./dropdown-menu";
+export { Select } from "./select";
+export type { SelectOption } from "./select";
+export { EditorToolbar } from "./editor-toolbar";

@@ -1,23 +1,27 @@
 import { create } from "zustand";
-import type { Campaign } from "../types";
+import type { Campaign, Broadcast } from "../types";
 import * as api from "../lib/tauri-api";
 
 interface CampaignState {
   campaigns: Campaign[];
+  broadcasts: Broadcast[];
   activeCampaign: Campaign | null;
   isLoading: boolean;
   error: string | null;
   fetchCampaigns: () => Promise<void>;
-  addCampaign: (campaign: Campaign) => Promise<void>;
+  fetchBroadcasts: (campaignId: string) => Promise<void>;
+  addCampaign: (campaign: Omit<Campaign, "id" | "createdAt" | "broadcastCount" | "totalSent">) => Promise<void>;
   removeCampaign: (id: string) => Promise<void>;
   setActiveCampaign: (campaign: Campaign | null) => void;
   updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
-  pauseCampaign: (id: string) => Promise<void>;
-  resumeCampaign: (id: string) => Promise<void>;
+  addBroadcast: (broadcast: Omit<Broadcast, "id" | "createdAt">) => Promise<void>;
+  pauseBroadcast: (id: string) => Promise<void>;
+  resumeBroadcast: (id: string) => Promise<void>;
 }
 
 export const useCampaignStore = create<CampaignState>((set) => ({
   campaigns: [],
+  broadcasts: [],
   activeCampaign: null,
   isLoading: false,
   error: null,
@@ -32,13 +36,18 @@ export const useCampaignStore = create<CampaignState>((set) => ({
     }
   },
 
+  fetchBroadcasts: async (campaignId: string) => {
+    try {
+      const broadcasts = await api.fetchBroadcasts(campaignId);
+      set({ broadcasts });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   addCampaign: async (campaign) => {
     try {
-      const created = await api.createCampaign(
-        campaign.name,
-        campaign.templateId,
-        campaign.totalCount
-      );
+      const created = await api.createCampaign(campaign.name, campaign.description, campaign.recipientListId);
       set((state) => ({ campaigns: [created, ...state.campaigns] }));
     } catch (e) {
       set({ error: String(e) });
@@ -50,8 +59,7 @@ export const useCampaignStore = create<CampaignState>((set) => ({
       await api.deleteCampaign(id);
       set((state) => ({
         campaigns: state.campaigns.filter((c) => c.id !== id),
-        activeCampaign:
-          state.activeCampaign?.id === id ? null : state.activeCampaign,
+        activeCampaign: state.activeCampaign?.id === id ? null : state.activeCampaign,
       }));
     } catch (e) {
       set({ error: String(e) });
@@ -62,11 +70,7 @@ export const useCampaignStore = create<CampaignState>((set) => ({
 
   updateCampaign: async (id, updates) => {
     try {
-      if (updates.status === "running") {
-        await api.startCampaign(id);
-      } else if (updates.status === "paused") {
-        await api.pauseCampaign(id);
-      }
+      await api.updateCampaign(id, updates);
       set((state) => ({
         campaigns: state.campaigns.map((c) =>
           c.id === id ? { ...c, ...updates } : c
@@ -81,12 +85,15 @@ export const useCampaignStore = create<CampaignState>((set) => ({
     }
   },
 
-  pauseCampaign: async (id) => {
+  addBroadcast: async (broadcast) => {
     try {
-      await api.pauseCampaign(id);
+      const created = await api.createBroadcast(broadcast);
       set((state) => ({
+        broadcasts: [created, ...state.broadcasts],
         campaigns: state.campaigns.map((c) =>
-          c.id === id ? { ...c, status: "paused" as const } : c
+          c.id === broadcast.campaignId
+            ? { ...c, broadcastCount: c.broadcastCount + 1, lastBroadcastAt: new Date() }
+            : c
         ),
       }));
     } catch (e) {
@@ -94,12 +101,25 @@ export const useCampaignStore = create<CampaignState>((set) => ({
     }
   },
 
-  resumeCampaign: async (id) => {
+  pauseBroadcast: async (id) => {
     try {
-      await api.resumeCampaign(id);
+      await api.pauseBroadcast(id);
       set((state) => ({
-        campaigns: state.campaigns.map((c) =>
-          c.id === id ? { ...c, status: "running" as const } : c
+        broadcasts: state.broadcasts.map((b) =>
+          b.id === id ? { ...b, status: "paused" as const } : b
+        ),
+      }));
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  resumeBroadcast: async (id) => {
+    try {
+      await api.resumeBroadcast(id);
+      set((state) => ({
+        broadcasts: state.broadcasts.map((b) =>
+          b.id === id ? { ...b, status: "running" as const } : b
         ),
       }));
     } catch (e) {

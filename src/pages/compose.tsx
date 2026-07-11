@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Toast } from "../components/ui";
+import { useSearchParams } from "react-router-dom";
+import { Toast, EditorToolbar } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
 import { useCampaignStore } from "../stores/campaign-store";
 import { useSendingStore } from "../stores/sending-store";
@@ -7,19 +8,22 @@ import { useRecipientStore } from "../stores/recipient-store";
 import { useSmtpStore } from "../stores/smtp-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { useListStore } from "../stores/list-store";
+import { getLastBroadcast, getSmtpAccountPassword, sendBroadcast } from "../lib/tauri-api";
 
 const systemVars = ["{{first_name}}", "{{last_name}}", "{{email}}"];
 const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
 
 export function ComposePage() {
   const { addTemplate } = useTemplateStore();
-  const { addCampaign } = useCampaignStore();
-  const { startSending } = useSendingStore();
+  const { addCampaign, addBroadcast, fetchCampaigns } = useCampaignStore();
+  const { startSending, stopSending, isSending } = useSendingStore();
   const { recipients, fetchRecipients, addRecipient } = useRecipientStore();
   const { accounts, fetchAccounts } = useSmtpStore();
   const { signature, fetchSettings } = useSettingsStore();
-  const { lists, fetchLists, createList, addMembersToList, deleteList } = useListStore();
+  const { lists, fetchLists, createList, addMembersToList, deleteList, fetchListMembers } = useListStore();
   const activeAccount = accounts.find((a) => a.isConnected) ?? accounts[0] ?? null;
+  const [searchParams] = useSearchParams();
+  const campaignId = searchParams.get("campaign");
 
   const [selectedList, setSelectedList] = useState<string>("__create__");
   const [subject, setSubject] = useState("");
@@ -34,17 +38,37 @@ export function ComposePage() {
   const [newListEmails, setNewListEmails] = useState("");
   const [createError, setCreateError] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
   const [validatingListId, setValidatingListId] = useState<string | null>(null);
   const [failedListId, setFailedListId] = useState<string | null>(null);
+  const [bodyDragOver, setBodyDragOver] = useState(false);
   const [pendingListData, setPendingListData] = useState<{ name: string; desc: string; emails: string } | null>(null);
   const emailTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const dragVariableRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetchRecipients();
     fetchAccounts();
     fetchSettings();
     fetchLists();
-  }, [fetchRecipients, fetchAccounts, fetchSettings, fetchLists]);
+    fetchCampaigns();
+  }, [fetchRecipients, fetchAccounts, fetchSettings, fetchLists, fetchCampaigns]);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    const loadLastBroadcast = async () => {
+      const last = await getLastBroadcast(campaignId);
+      if (last) {
+        setSubject(last.subject);
+      }
+    };
+    loadLastBroadcast();
+  }, [campaignId]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -65,6 +89,53 @@ export function ComposePage() {
       );
     }
   }, [signature]);
+
+  useEffect(() => {
+    if (bodyRef.current && bodyRef.current.innerHTML !== body) {
+      bodyRef.current.innerHTML = body;
+    }
+  }, [body]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const wrapImages = () => {
+      el.querySelectorAll("img:not(.img-wrapped)").forEach((img) => {
+        img.classList.add("img-wrapped");
+        const wrapper = document.createElement("div");
+        wrapper.className = "img-wrapper";
+        img.parentNode?.insertBefore(wrapper, img);
+        wrapper.appendChild(img);
+
+        const btn = document.createElement("button");
+        btn.className = "img-remove-btn";
+        btn.innerHTML = "&#10005;";
+        btn.type = "button";
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const parent = wrapper.parentNode;
+          parent?.removeChild(wrapper);
+          setBody(el.innerHTML);
+        });
+        wrapper.appendChild(btn);
+
+        let br = wrapper.nextSibling;
+        if (!br || !(br instanceof HTMLBRElement)) {
+          br = document.createElement("br");
+          wrapper.parentNode?.insertBefore(br, wrapper.nextSibling);
+        }
+        moveCursorAfterElement(br as HTMLElement);
+      });
+    };
+
+    wrapImages();
+
+    const observer = new MutationObserver(wrapImages);
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [body]);
 
   const getRecipientCount = () => {
     const list = lists.find((l) => l.id === selectedList);
@@ -197,14 +268,109 @@ export function ComposePage() {
   const handleDragStart = (e: React.DragEvent, variable: string) => {
     e.dataTransfer.setData("text/plain", variable);
     e.dataTransfer.effectAllowed = "copy";
+    dragVariableRef.current = variable;
   };
+
+  useEffect(() => {
+    const handleWindowDrop = (e: DragEvent) => {
+      const variable = dragVariableRef.current;
+      if (!variable) return;
+      e.preventDefault();
+
+      const el = bodyRef.current;
+      if (!el) return;
+      el.focus();
+
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (el.contains(range.commonAncestorContainer)) {
+          range.deleteContents();
+          range.insertNode(document.createTextNode(variable));
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } else {
+          el.innerHTML += variable;
+        }
+      } else {
+        el.innerHTML += variable;
+      }
+      setBody(el.innerHTML);
+      dragVariableRef.current = null;
+    };
+
+    const handleWindowDragEnd = () => {
+      dragVariableRef.current = null;
+    };
+
+    window.addEventListener("drop", handleWindowDrop, true);
+    window.addEventListener("dragend", handleWindowDragEnd, true);
+    return () => {
+      window.removeEventListener("drop", handleWindowDrop, true);
+      window.removeEventListener("dragend", handleWindowDragEnd, true);
+    };
+  }, []);
 
   const handleBodyDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const variable = e.dataTransfer.getData("text/plain");
-    if (!variable) return;
+  };
 
-    const el = e.currentTarget as HTMLDivElement;
+  const handleBodyDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setBodyDragOver(true);
+  };
+
+  const handleBodyDragLeave = () => {
+    setBodyDragOver(false);
+  };
+
+  const handleSubjectDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const variable = e.dataTransfer.getData("text/plain");
+    if (variable) setSubject((prev) => prev + variable);
+  };
+
+  const handleSubjectDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const moveCursorAfterElement = (el: HTMLElement) => {
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.setStartAfter(el);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
+  const handleBodyPaste = () => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    setTimeout(() => {
+      const images = el.querySelectorAll("img.img-wrapped");
+      if (images.length > 0) {
+        const lastWrapper = images[images.length - 1].closest(".img-wrapper");
+        if (lastWrapper) {
+          const br = lastWrapper.nextSibling;
+          if (br instanceof HTMLElement) {
+            moveCursorAfterElement(br);
+          } else {
+            moveCursorAfterElement(lastWrapper as HTMLElement);
+          }
+        }
+      }
+      setBody(el.innerHTML);
+    }, 0);
+  };
+
+  const insertVariableAtCursor = (variable: string) => {
+    const el = bodyRef.current;
+    if (!el) return;
     el.focus();
 
     const sel = window.getSelection();
@@ -225,27 +391,6 @@ export function ComposePage() {
     setBody(el.innerHTML);
   };
 
-  const handleBodyDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
-  };
-
-  const handleBodyDragLeave = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLDivElement).style.background = "rgba(0,0,0,0.2)";
-  };
-
-  const handleSubjectDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const variable = e.dataTransfer.getData("text/plain");
-    if (variable) setSubject((prev) => prev + variable);
-  };
-
-  const handleSubjectDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  };
-
   const handleSaveTemplate = async () => {
     await addTemplate({
       name: subject || "Untitled Template",
@@ -258,21 +403,87 @@ export function ComposePage() {
   };
 
   const handleSendNow = async () => {
-    if (!activeAccount) return;
+    if (!activeAccount || !body.trim() || !subject.trim()) return;
     const count = getRecipientCount();
     if (count === 0) return;
 
-    await addCampaign({
-      id: "",
-      name: subject || "Quick Send",
-      status: "draft",
-      templateId: undefined,
-      createdAt: new Date(),
-      sentCount: 0,
-      totalCount: count,
-    });
-
     startSending(`camp-${Date.now()}`, count);
+
+    try {
+      let targetCampaignId = campaignId;
+
+      if (!targetCampaignId) {
+        await addCampaign({ name: subject || "Quick Send", status: "active" });
+        const campaigns = useCampaignStore.getState().campaigns;
+        targetCampaignId = campaigns[0]?.id;
+      }
+
+      if (!targetCampaignId) {
+        showToast("Failed to create campaign", "error");
+        stopSending();
+        return;
+      }
+
+      await addBroadcast({
+        campaignId: targetCampaignId,
+        subject: subject || "Quick Send",
+        status: "draft",
+        sentCount: 0,
+        totalCount: count,
+      });
+
+      const latestBroadcasts = useCampaignStore.getState().broadcasts;
+      const broadcastId = latestBroadcasts[0]?.id;
+      if (!broadcastId) {
+        showToast("Failed to create broadcast", "error");
+        stopSending();
+        return;
+      }
+
+      await fetchListMembers(selectedList);
+      const members = useListStore.getState().listMembers;
+      const emails = members.map((m) => m.email);
+
+      if (emails.length === 0) {
+        showToast("No recipient emails found", "error");
+        stopSending();
+        return;
+      }
+
+      let decryptedPassword = "";
+      try {
+        decryptedPassword = await getSmtpAccountPassword(activeAccount.id);
+      } catch {
+        showToast("Could not retrieve SMTP password. Please re-save the account with a password.", "error");
+        stopSending();
+        return;
+      }
+
+      const result = await sendBroadcast({
+        campaignId: targetCampaignId,
+        broadcastId,
+        subject,
+        bodyHtml: body,
+        smtpHost: activeAccount.host,
+        smtpPort: activeAccount.port,
+        smtpEmail: activeAccount.email,
+        smtpPassword: decryptedPassword,
+        smtpEncryption: activeAccount.encryption,
+        recipientEmails: emails,
+      });
+
+      stopSending();
+      await fetchCampaigns();
+
+      if (result.failed === 0) {
+        showToast(`All ${result.sent} emails sent successfully!`, "success");
+      } else {
+        showToast(`Sent ${result.sent}/${result.total} emails. ${result.failed} failed.`, result.sent > 0 ? "success" : "error");
+      }
+    } catch (e) {
+      stopSending();
+      showToast(`Send failed: ${String(e)}`, "error");
+    }
   };
 
   const inputStyle = { width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 10, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" };
@@ -351,31 +562,47 @@ export function ComposePage() {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, padding: 18, background: "rgba(0,0,0,0.2)", overflow: "auto" }}>
+        <EditorToolbar editorRef={bodyRef} onContentChange={() => setBody(bodyRef.current?.innerHTML ?? "")} />
+        <div style={{ flex: 1, padding: 18, background: bodyDragOver ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.2)", overflow: "auto", minHeight: 300, transition: "background 0.15s" }}
+          onDrop={handleBodyDrop}
+          onDragOver={handleBodyDragOver}
+          onDragLeave={handleBodyDragLeave}
+        >
           <div
+            ref={bodyRef}
+            className="body-editor"
             style={{ minHeight: "100%", outline: "none", fontSize: 14, lineHeight: 1.6, color: "var(--text0)" }}
             contentEditable
             suppressContentEditableWarning
-            dangerouslySetInnerHTML={{ __html: body }}
             onBlur={(e) => setBody(e.currentTarget.innerHTML)}
-            onDrop={handleBodyDrop}
-            onDragOver={handleBodyDragOver}
-            onDragLeave={handleBodyDragLeave}
+            onPaste={handleBodyPaste}
           />
         </div>
 
         {/* Footer */}
         <div style={{ padding: 12, borderTop: "1px solid var(--stroke0)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={handleSendNow} className="pillBtn" type="button" disabled={getRecipientCount() === 0}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>send</span>
-              Send to {getRecipientCount()} recipients
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
             <button onClick={handleSaveTemplate} className="pillBtn" type="button">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>save</span>
               {showSaved ? "Saved!" : "Save Template"}
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleSendNow}
+              className="pillBtn"
+              type="button"
+              disabled={getRecipientCount() === 0 || isSending}
+              style={{
+                background: isSending ? "var(--panel2)" : undefined,
+                opacity: isSending ? 0.7 : 1,
+                cursor: isSending ? "not-allowed" : undefined,
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 16, animation: isSending ? "spin 1s linear infinite" : "none" }}>
+                {isSending ? "progress_activity" : "send"}
+              </span>
+              {isSending ? "Sending..." : `Send to ${getRecipientCount()} recipients`}
             </button>
           </div>
         </div>
@@ -393,7 +620,8 @@ export function ComposePage() {
                 key={v}
                 draggable
                 onDragStart={(e) => handleDragStart(e, v)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "grab", transition: "border-color 0.15s, background 0.15s" }}
+                onClick={() => insertVariableAtCursor(v)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "pointer", transition: "border-color 0.15s, background 0.15s" }}
               >
                 <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--warn)" }}>{v}</span>
                 <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text2)" }}>drag_indicator</span>
@@ -405,7 +633,8 @@ export function ComposePage() {
                 key={v}
                 draggable
                 onDragStart={(e) => handleDragStart(e, v)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "grab", transition: "border-color 0.15s, background 0.15s" }}
+                onClick={() => insertVariableAtCursor(v)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 12, background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", cursor: "pointer", transition: "border-color 0.15s, background 0.15s" }}
               >
                 <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--warn)" }}>{v}</span>
                 <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text2)" }}>drag_indicator</span>

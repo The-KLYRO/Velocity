@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod crypto;
 pub mod database;
 pub mod errors;
 pub mod models;
@@ -26,14 +27,19 @@ pub fn run() {
             commands::smtp::test_smtp_connection,
             commands::smtp::save_smtp_account,
             commands::smtp::get_smtp_accounts,
+            commands::smtp::get_smtp_account_password,
             commands::smtp::delete_smtp_account,
             commands::smtp::update_smtp_connection_status,
             commands::campaign::create_campaign,
-            commands::campaign::start_campaign,
-            commands::campaign::pause_campaign,
-            commands::campaign::resume_campaign,
+            commands::campaign::update_campaign,
             commands::campaign::get_campaigns,
             commands::campaign::delete_campaign,
+            commands::campaign::create_broadcast,
+            commands::campaign::get_broadcasts,
+            commands::campaign::start_broadcast,
+            commands::campaign::pause_broadcast,
+            commands::campaign::resume_broadcast,
+            commands::campaign::get_last_broadcast,
             commands::recipients::import_recipients_csv,
             commands::recipients::get_recipients,
             commands::recipients::search_recipients,
@@ -60,6 +66,8 @@ pub fn run() {
             commands::lists::add_recipients_to_list,
             commands::lists::remove_recipients_from_list,
             commands::lists::get_list_recipients,
+            commands::sending::send_email,
+            commands::sending::send_broadcast,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

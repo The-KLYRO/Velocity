@@ -6,10 +6,9 @@ import { ComposePage } from "../pages/compose";
 import { RecipientsPage } from "../pages/recipients";
 import { CampaignsPage } from "../pages/campaigns";
 import { SettingsPage } from "../pages/settings";
-import { SmtpPage } from "../pages/smtp";
 import { NavProvider } from "./page-transition";
 
-const pageOrder = ["/", "/compose", "/recipients", "/campaigns", "/smtp", "/settings"];
+const pageOrder = ["/", "/campaigns", "/compose", "/recipients", "/settings"];
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -45,7 +44,6 @@ export function AppRoutes() {
               <Route path="/recipients" element={<RecipientsPage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/smtp" element={<SmtpPage />} />
             </Routes>
           </PageTransition>
         </AppLayout>

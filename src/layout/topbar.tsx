@@ -53,12 +53,6 @@ export function TopBar() {
         onMouseDown={(e) => e.stopPropagation()}
         style={{ display: "flex", alignItems: "center", gap: 8, WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <button className="pillBtn" type="button" aria-label="Search">
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
-        </button>
-        <button className="pillBtn" type="button" aria-label="Notifications">
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>notifications</span>
-        </button>
         <div style={{ width: 1, height: 18, background: "var(--stroke0)", margin: "0 4px" }} />
         <button
           onClick={handleMinimize}

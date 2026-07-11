@@ -2,10 +2,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 const mainNavItems = [
   { path: "/", label: "Dashboard", icon: "dashboard" },
+  { path: "/campaigns", label: "Campaigns", icon: "send" },
   { path: "/compose", label: "Compose", icon: "edit_square" },
   { path: "/recipients", label: "Recipients", icon: "group" },
-  { path: "/campaigns", label: "Campaigns", icon: "send" },
-  { path: "/smtp", label: "SMTP Accounts", icon: "dns" },
 ];
 
 const bottomNavItems = [
