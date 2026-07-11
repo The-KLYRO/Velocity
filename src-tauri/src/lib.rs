@@ -53,6 +53,13 @@ pub fn run() {
             commands::settings::upsert_setting,
             commands::settings::upsert_settings_batch,
             commands::settings::delete_setting,
+            commands::lists::create_recipient_list,
+            commands::lists::get_recipient_lists,
+            commands::lists::delete_recipient_list,
+            commands::lists::rename_recipient_list,
+            commands::lists::add_recipients_to_list,
+            commands::lists::remove_recipients_from_list,
+            commands::lists::get_list_recipients,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

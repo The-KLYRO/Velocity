@@ -431,3 +431,103 @@ export async function saveSettingsBatch(
 ): Promise<void> {
   await invoke("upsert_settings_batch", { settings });
 }
+
+// ─── Recipient List Commands ─────────────────────────────────────
+
+export interface RecipientList {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: Date;
+  memberCount: number;
+}
+
+export interface ListMember {
+  recipientId: string;
+  email: string;
+  name: string;
+  company: string | null;
+  addedAt: Date;
+}
+
+interface RecipientListBackend {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  member_count: number;
+}
+
+interface ListMemberBackend {
+  recipient_id: string;
+  email: string;
+  name: string;
+  company: string | null;
+  added_at: string;
+}
+
+function mapList(l: RecipientListBackend): RecipientList {
+  return {
+    id: l.id,
+    name: l.name,
+    description: l.description,
+    createdAt: new Date(l.created_at),
+    memberCount: l.member_count,
+  };
+}
+
+export async function fetchRecipientLists(): Promise<RecipientList[]> {
+  const data = await invoke<RecipientListBackend[]>("get_recipient_lists");
+  return data.map(mapList);
+}
+
+export async function createRecipientList(
+  name: string,
+  description?: string
+): Promise<RecipientList> {
+  const data = await invoke<RecipientListBackend>("create_recipient_list", {
+    name,
+    description: description ?? null,
+  });
+  return mapList(data);
+}
+
+export async function deleteRecipientList(id: string): Promise<void> {
+  await invoke("delete_recipient_list", { id });
+}
+
+export async function renameRecipientList(
+  id: string,
+  name: string
+): Promise<void> {
+  await invoke("rename_recipient_list", { id, name });
+}
+
+export async function addRecipientsToList(
+  listId: string,
+  recipientIds: string[]
+): Promise<void> {
+  await invoke("add_recipients_to_list", { listId, recipientIds });
+}
+
+export async function removeRecipientsFromList(
+  listId: string,
+  recipientIds: string[]
+): Promise<void> {
+  await invoke("remove_recipients_from_list", { listId, recipientIds });
+}
+
+export async function getListRecipients(
+  listId: string
+): Promise<ListMember[]> {
+  const data = await invoke<ListMemberBackend[]>("get_list_recipients", {
+    listId,
+  });
+  return data.map((m) => ({
+    recipientId: m.recipient_id,
+    email: m.email,
+    name: m.name,
+    company: m.company,
+    addedAt: new Date(m.added_at),
+  }));
+}
