@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Toast, EditorToolbar } from "../components/ui";
+import { Toast, EditorToolbar, ProgressBar } from "../components/ui";
 import { useTemplateStore } from "../stores/template-store";
 import { useCampaignStore } from "../stores/campaign-store";
 import { useSendingStore } from "../stores/sending-store";
@@ -8,7 +8,7 @@ import { useRecipientStore } from "../stores/recipient-store";
 import { useSmtpStore } from "../stores/smtp-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { useListStore } from "../stores/list-store";
-import { getLastBroadcast, getSmtpAccountPassword, sendBroadcast } from "../lib/tauri-api";
+import { getLastBroadcast, getSmtpAccountPassword, sendBroadcast, onSendProgress } from "../lib/tauri-api";
 
 const systemVars = ["{{first_name}}", "{{last_name}}", "{{email}}"];
 const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
@@ -16,7 +16,7 @@ const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
 export function ComposePage() {
   const { addTemplate } = useTemplateStore();
   const { addCampaign, addBroadcast, fetchCampaigns } = useCampaignStore();
-  const { startSending, stopSending, isSending } = useSendingStore();
+  const { startSending, stopSending, isSending, incrementProgress, sentCount, failedCount, totalCount, startTime, currentEmail } = useSendingStore();
   const { recipients, fetchRecipients, addRecipient } = useRecipientStore();
   const { accounts, fetchAccounts } = useSmtpStore();
   const { signature, fetchSettings } = useSettingsStore();
@@ -50,6 +50,8 @@ export function ComposePage() {
   const emailTextareaRef = useRef<HTMLTextAreaElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dragVariableRef = useRef<string | null>(null);
+  const unlistenRef = useRef<(() => void) | null>(null);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     fetchRecipients();
@@ -136,6 +138,23 @@ export function ComposePage() {
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [body]);
+
+  useEffect(() => {
+    if (!isSending || !startTime) {
+      setElapsed(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isSending, startTime]);
+
+  useEffect(() => {
+    return () => {
+      unlistenRef.current?.();
+    };
+  }, []);
 
   const getRecipientCount = () => {
     const list = lists.find((l) => l.id === selectedList);
@@ -427,6 +446,11 @@ export function ComposePage() {
 
     startSending(`camp-${Date.now()}`, count);
 
+    const unlisten = await onSendProgress((p) => {
+      incrementProgress(p.sent, p.failed, p.current);
+    });
+    unlistenRef.current = unlisten;
+
     try {
       let targetCampaignId = campaignId;
 
@@ -438,6 +462,8 @@ export function ComposePage() {
 
       if (!targetCampaignId) {
         showToast("Failed to create campaign", "error");
+        unlisten();
+        unlistenRef.current = null;
         stopSending();
         return;
       }
@@ -454,6 +480,8 @@ export function ComposePage() {
       const broadcastId = latestBroadcasts[0]?.id;
       if (!broadcastId) {
         showToast("Failed to create broadcast", "error");
+        unlisten();
+        unlistenRef.current = null;
         stopSending();
         return;
       }
@@ -464,6 +492,8 @@ export function ComposePage() {
 
       if (emails.length === 0) {
         showToast("No recipient emails found", "error");
+        unlisten();
+        unlistenRef.current = null;
         stopSending();
         return;
       }
@@ -473,6 +503,8 @@ export function ComposePage() {
         decryptedPassword = await getSmtpAccountPassword(activeAccount.id);
       } catch {
         showToast("Could not retrieve SMTP password. Please re-save the account with a password.", "error");
+        unlisten();
+        unlistenRef.current = null;
         stopSending();
         return;
       }
@@ -490,6 +522,8 @@ export function ComposePage() {
         recipientEmails: emails,
       });
 
+      unlisten();
+      unlistenRef.current = null;
       stopSending();
       await fetchCampaigns();
 
@@ -499,9 +533,17 @@ export function ComposePage() {
         showToast(`Sent ${result.sent}/${result.total} emails. ${result.failed} failed.`, result.sent > 0 ? "success" : "error");
       }
     } catch (e) {
+      unlistenRef.current?.();
+      unlistenRef.current = null;
       stopSending();
       showToast(`Send failed: ${String(e)}`, "error");
     }
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
   const inputStyle = { width: "100%", background: "rgba(0,0,0,0.14)", border: "1px solid var(--stroke0)", borderRadius: 10, padding: "10px 14px", color: "var(--text0)", fontSize: 13, outline: "none" };
@@ -598,32 +640,37 @@ export function ComposePage() {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: 12, borderTop: "1px solid var(--stroke0)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={handleSaveTemplate} className="pillBtn" type="button">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>save</span>
-              {showSaved ? "Saved!" : "Save Template"}
-            </button>
+        {isSending ? (
+          <div style={{ padding: "8px 14px", borderTop: "1px solid var(--stroke0)", display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "var(--text2)" }}>
+            <ProgressBar value={sentCount + failedCount} max={totalCount} color={failedCount > 0 ? "secondary" : "primary"} showGlow className="flex-1 !h-1" />
+            <span style={{ color: "var(--text0)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{sentCount + failedCount}/{totalCount}</span>
+            {failedCount > 0 && <span style={{ color: "var(--bad)", whiteSpace: "nowrap" }}>{failedCount} failed</span>}
+            <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{formatTime(elapsed)}</span>
+            {sentCount + failedCount > 0 && (
+              <span style={{ whiteSpace: "nowrap" }}>~{formatTime(Math.ceil(((sentCount + failedCount) > 0 ? (elapsed / (sentCount + failedCount)) * (totalCount - sentCount - failedCount) : 0)))}</span>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={handleSendNow}
-              className="pillBtn"
-              type="button"
-              disabled={getRecipientCount() === 0 || isSending}
-              style={{
-                background: isSending ? "var(--panel2)" : undefined,
-                opacity: isSending ? 0.7 : 1,
-                cursor: isSending ? "not-allowed" : undefined,
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 16, animation: isSending ? "spin 1s linear infinite" : "none" }}>
-                {isSending ? "progress_activity" : "send"}
-              </span>
-              {isSending ? "Sending..." : `Send to ${getRecipientCount()} recipients`}
-            </button>
+        ) : (
+          <div style={{ padding: 12, borderTop: "1px solid var(--stroke0)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleSaveTemplate} className="pillBtn" type="button">
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>save</span>
+                {showSaved ? "Saved!" : "Save Template"}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleSendNow}
+                className="pillBtn"
+                type="button"
+                disabled={getRecipientCount() === 0}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>send</span>
+                Send to {getRecipientCount()} recipients
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Right sidebar */}

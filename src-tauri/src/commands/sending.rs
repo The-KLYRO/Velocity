@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::command;
+use tauri::AppHandle;
+use tauri::Emitter;
 use tauri::State;
 use crate::state::AppState;
 use base64::Engine;
@@ -203,9 +205,18 @@ pub struct SendBroadcastResult {
     pub errors: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendProgress {
+    pub sent: usize,
+    pub failed: usize,
+    pub total: usize,
+    pub current: String,
+}
+
 #[command]
 pub async fn send_broadcast(
     state: State<'_, AppState>,
+    app: AppHandle,
     req: SendBroadcastRequest,
 ) -> Result<SendBroadcastResult, String> {
     let pool = state.get_pool().await?;
@@ -277,6 +288,13 @@ pub async fn send_broadcast(
                 .await;
             }
         }
+
+        let _ = app.emit("send-progress", SendProgress {
+            sent,
+            failed,
+            total,
+            current: recipient.clone(),
+        });
     }
 
     let _ = sqlx::query(
