@@ -344,6 +344,7 @@ button, input {
   flex-direction: column;
   overflow: hidden;
   width: 100%;
+  z-index: 1;
   background: radial-gradient(800px 520px at 35% 0%, rgba(255, 255, 255, 0.06), transparent 60%),
     radial-gradient(900px 700px at 90% 60%, rgba(255, 255, 255, 0.04), transparent 55%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.32));

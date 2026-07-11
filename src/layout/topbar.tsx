@@ -29,29 +29,38 @@ export function TopBar() {
     try { await getCurrentWindow().close(); } catch (err) { console.error("close failed", err); }
   };
 
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+    getCurrentWindow().startDragging();
+  };
+
   return (
     <header
-      data-tauri-drag-region
+      onMouseDown={handleDragMouseDown}
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         padding: "14px 14px 10px 18px",
         userSelect: "none",
+        position: "relative",
+        WebkitAppRegion: "drag",
       } as React.CSSProperties}
     >
-      <div data-tauri-drag-region style={{ fontSize: 13, letterSpacing: "0.2px", color: "var(--text1)" }}>{title}</div>
+      <div style={{ fontSize: 13, letterSpacing: "0.2px", color: "var(--text1)" }}>{title}</div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button data-tauri-drag-region="false" className="pillBtn" type="button" aria-label="Search">
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: "flex", alignItems: "center", gap: 8, WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <button className="pillBtn" type="button" aria-label="Search">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
         </button>
-        <button data-tauri-drag-region="false" className="pillBtn" type="button" aria-label="Notifications">
+        <button className="pillBtn" type="button" aria-label="Notifications">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>notifications</span>
         </button>
-        <div data-tauri-drag-region="false" style={{ width: 1, height: 18, background: "var(--stroke0)", margin: "0 4px" }} />
+        <div style={{ width: 1, height: 18, background: "var(--stroke0)", margin: "0 4px" }} />
         <button
-          data-tauri-drag-region="false"
           onClick={handleMinimize}
           style={{
             width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
@@ -64,7 +73,6 @@ export function TopBar() {
           <svg width="10" height="1.5" viewBox="0 0 10 1.5" fill="currentColor"><rect width="10" height="1.5" rx="0.75" /></svg>
         </button>
         <button
-          data-tauri-drag-region="false"
           onClick={handleMaximize}
           style={{
             width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
@@ -77,7 +85,6 @@ export function TopBar() {
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="0.7" y="0.7" width="8.6" height="8.6" rx="1.5" /></svg>
         </button>
         <button
-          data-tauri-drag-region="false"
           onClick={handleClose}
           style={{
             width: 36, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
