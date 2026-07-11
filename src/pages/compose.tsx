@@ -187,6 +187,9 @@ export function ComposePage() {
       textarea.focus();
       if (idx !== -1) {
         textarea.setSelectionRange(idx, idx + email.length);
+        const linesBefore = text.substring(0, idx).split("\n").length;
+        const lineHeight = 18;
+        textarea.scrollTop = Math.max(0, (linesBefore - 3) * lineHeight);
       }
     }, 50);
   };
