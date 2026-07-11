@@ -4,9 +4,10 @@ import { SearchInput } from "../components/ui/search-input";
 interface TopBarProps {
   title: string;
   searchPlaceholder?: string;
+  onSearch?: (query: string) => void;
 }
 
-export function TopBar({ title, searchPlaceholder = "Search..." }: TopBarProps) {
+export function TopBar({ title, searchPlaceholder = "Search...", onSearch }: TopBarProps) {
   const navigate = useNavigate();
 
   return (
@@ -16,7 +17,7 @@ export function TopBar({ title, searchPlaceholder = "Search..." }: TopBarProps) 
           {title}
         </h2>
         <div className="w-64">
-          <SearchInput placeholder={searchPlaceholder} />
+          <SearchInput placeholder={searchPlaceholder} onSearch={onSearch} />
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 interface BadgeProps {
-  status: "running" | "paused" | "completed" | "failed" | "valid" | "invalid" | "active" | "bounced" | "pending";
+  status: "running" | "paused" | "completed" | "failed" | "valid" | "invalid" | "active" | "bounced" | "pending" | "unsubscribed";
   className?: string;
 }
 
@@ -13,6 +13,7 @@ const statusStyles = {
   active: "bg-green-500/10 border-green-500/20 text-green-400",
   bounced: "bg-error/10 border-error/20 text-error",
   pending: "bg-surface-bright/30 border-glass-stroke text-on-surface-variant",
+  unsubscribed: "bg-orange-500/10 border-orange-500/20 text-orange-400",
 };
 
 export function Badge({ status, className = "" }: BadgeProps) {

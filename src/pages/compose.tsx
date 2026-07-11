@@ -1,10 +1,74 @@
+import { useState } from "react";
 import { TopBar } from "../layout/topbar";
 import { Button } from "../components/ui";
+import { useTemplateStore } from "../stores/template-store";
+import { useCampaignStore } from "../stores/campaign-store";
+import { useSendingStore } from "../stores/sending-store";
+import { useRecipientStore } from "../stores/recipient-store";
+import { useSmtpStore } from "../stores/smtp-store";
+import { useSettingsStore } from "../stores/settings-store";
 
 const systemVars = ["{{first_name}}", "{{last_name}}", "{{email}}"];
 const customVars = ["{{company}}", "{{industry}}", "{{last_order_id}}"];
 
 export function ComposePage() {
+  const { templates, addTemplate } = useTemplateStore();
+  const { addCampaign } = useCampaignStore();
+  const { startSending } = useSendingStore();
+  const { recipients } = useRecipientStore();
+  const { activeAccount } = useSmtpStore();
+  const { signature } = useSettingsStore();
+
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState(
+    `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Lumina that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
+  );
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+
+  const handleSaveTemplate = () => {
+    const newTemplate = {
+      id: `tpl-${Date.now()}`,
+      name: subject || "Untitled Template",
+      subject,
+      bodyHtml: body,
+      variables: systemVars.concat(customVars).map((v) => v.replace(/[{}]/g, "")),
+      createdAt: new Date(),
+    };
+    addTemplate(newTemplate);
+    setShowSaved(true);
+    setTimeout(() => setShowSaved(false), 2000);
+  };
+
+  const handleSendNow = () => {
+    if (!activeAccount) return;
+    const recipientIds = to
+      ? to.split(",").map((_, i) => `r-imported-${Date.now()}-${i}`)
+      : recipients.filter((r) => r.status === "active").map((r) => r.id);
+
+    const campaign = {
+      id: `camp-${Date.now()}`,
+      name: subject || "Quick Send",
+      status: "running" as const,
+      templateId: selectedTemplate || undefined,
+      createdAt: new Date(),
+      sentCount: 0,
+      totalCount: recipientIds.length,
+    };
+    addCampaign(campaign);
+    startSending(campaign.id, recipientIds.length);
+  };
+
+  const loadTemplate = (templateId: string) => {
+    const tpl = templates.find((t) => t.id === templateId);
+    if (tpl) {
+      setSubject(tpl.subject);
+      setBody(tpl.bodyHtml);
+      setSelectedTemplate(templateId);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <TopBar title="Bulk Management" searchPlaceholder="Search templates..." />
@@ -32,6 +96,8 @@ export function ComposePage() {
               <input
                 className="flex-1 bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline-variant"
                 placeholder="Recipients (comma separated)..."
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
               />
               <div className="flex gap-2 text-label-sm font-label-sm text-primary">
                 <button className="hover:underline">Cc</button>
@@ -43,6 +109,8 @@ export function ComposePage() {
               <input
                 className="flex-1 bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline-variant"
                 placeholder="Add a subject line"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
               />
             </div>
           </div>
@@ -90,26 +158,15 @@ export function ComposePage() {
               className="min-h-full outline-none text-body-lg font-body-lg leading-relaxed text-on-surface"
               contentEditable
               suppressContentEditableWarning
-            >
-              <p>Hi {'{{first_name}}'},</p>
-              <br />
-              <p>
-                I noticed that your company, {'{{company}}'}, has been expanding its reach lately.
-                We've developed a high-velocity solution at Lumina that could streamline your
-                operations significantly.
-              </p>
-              <br />
-              <p>Would you be open to a 5-minute chat next Tuesday?</p>
-              <br />
-              <p>Best regards,</p>
-              <p>The Lumina Team</p>
-            </div>
+              dangerouslySetInnerHTML={{ __html: body }}
+              onBlur={(e) => setBody(e.currentTarget.innerHTML)}
+            />
           </div>
 
           <div className="p-6 bg-surface-container/60 border-t border-glass-stroke flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="flex rounded-xl overflow-hidden shadow-lg shadow-primary/30">
-                <Button variant="primary" icon="send">
+                <Button variant="primary" icon="send" onClick={handleSendNow}>
                   Send Now
                 </Button>
                 <button className="bg-primary-container text-on-primary-container px-3 py-3 border-l border-on-primary-container/20 hover:brightness-110 transition-all">
@@ -121,8 +178,8 @@ export function ComposePage() {
               </Button>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="secondary" icon="save">
-                Save Template
+              <Button variant="secondary" icon="save" onClick={handleSaveTemplate}>
+                {showSaved ? "Saved!" : "Save Template"}
               </Button>
               <button className="p-3 text-error hover:bg-error/10 rounded-xl transition-all">
                 <span className="material-symbols-outlined">delete</span>
@@ -151,6 +208,9 @@ export function ComposePage() {
                   <div
                     key={v}
                     className="group flex items-center justify-between p-3 rounded-xl bg-surface-container-high/40 border border-glass-stroke hover:border-tertiary/40 cursor-pointer transition-all"
+                    onClick={() => {
+                      navigator.clipboard.writeText(v);
+                    }}
                   >
                     <span className="font-mono text-label-md text-tertiary">{v}</span>
                     <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 text-on-surface-variant text-[18px]">
@@ -167,6 +227,9 @@ export function ComposePage() {
                   <div
                     key={v}
                     className="group flex items-center justify-between p-3 rounded-xl bg-surface-container-high/40 border border-glass-stroke hover:border-tertiary/40 cursor-pointer transition-all"
+                    onClick={() => {
+                      navigator.clipboard.writeText(v);
+                    }}
                   >
                     <span className="font-mono text-label-md text-tertiary">{v}</span>
                     <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 text-on-surface-variant text-[18px]">
@@ -201,6 +264,31 @@ export function ComposePage() {
               Apply Suggestion
             </button>
           </div>
+
+          {templates.length > 0 && (
+            <div className="glass-panel p-6 rounded-2xl border-primary/20">
+              <h4 className="font-label-md text-label-md text-primary flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-[20px]">description</span>
+                Load Template
+              </h4>
+              <div className="space-y-2">
+                {templates.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    onClick={() => loadTemplate(tpl.id)}
+                    className={`w-full text-left p-3 rounded-xl border transition-all text-label-sm ${
+                      selectedTemplate === tpl.id
+                        ? "bg-primary/10 border-primary/30 text-primary"
+                        : "bg-surface-container-high/40 border-glass-stroke hover:border-primary/20 text-on-surface"
+                    }`}
+                  >
+                    <p className="font-medium">{tpl.name}</p>
+                    <p className="text-on-surface-variant text-[11px] mt-0.5 truncate">{tpl.subject}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

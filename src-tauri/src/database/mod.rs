@@ -1,3 +1,5 @@
+pub mod migrations;
+
 use sqlx::sqlite::SqlitePool;
 
 pub async fn create_pool(database_path: &str) -> Result<SqlitePool, sqlx::Error> {

@@ -1,15 +1,41 @@
+import { useMemo } from "react";
 import { TopBar } from "../layout/topbar";
-import { GlassCard, StatCard, Badge } from "../components/ui";
+import { GlassCard, StatCard } from "../components/ui";
+import { useCampaignStore } from "../stores/campaign-store";
 
 const mockLogs = [
-  { campaign: "Summer Sale", recipient: "john@example.com", event: "Delivered", status: "completed", time: "2 mins ago" },
-  { campaign: "Newsletter", recipient: "jane@test.com", event: "Opened", status: "active", time: "5 mins ago" },
-  { campaign: "Re-engagement", recipient: "bob@old.com", event: "Bounced", status: "failed", time: "12 mins ago" },
-  { campaign: "Product Launch", recipient: "alice@company.io", event: "Clicked", status: "active", time: "18 mins ago" },
-  { campaign: "Welcome Series", recipient: "new@user.com", event: "Sent", status: "pending", time: "25 mins ago" },
+  { campaign: "Summer Sale", recipient: "john@example.com", event: "Delivered", status: "completed" as const, time: "2 mins ago" },
+  { campaign: "Newsletter", recipient: "jane@test.com", event: "Opened", status: "active" as const, time: "5 mins ago" },
+  { campaign: "Re-engagement", recipient: "bob@old.com", event: "Bounced", status: "failed" as const, time: "12 mins ago" },
+  { campaign: "Product Launch", recipient: "alice@company.io", event: "Clicked", status: "active" as const, time: "18 mins ago" },
+  { campaign: "Welcome Series", recipient: "new@user.com", event: "Sent", status: "pending" as const, time: "25 mins ago" },
 ];
 
 export function ReportsPage() {
+  const { campaigns } = useCampaignStore();
+
+  const stats = useMemo(() => {
+    const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0);
+    const totalRecipients = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+    const deliveryRate = totalRecipients > 0 ? ((totalSent / totalRecipients) * 100).toFixed(1) : "0";
+    const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
+    return { totalSent, deliveryRate, completedCampaigns, totalCampaigns: campaigns.length };
+  }, [campaigns]);
+
+  const handleExport = () => {
+    const csv = [
+      "Campaign,Recipient,Event,Status,Time",
+      ...mockLogs.map((l) => `${l.campaign},${l.recipient},${l.event},${l.status},${l.time}`),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "report.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <TopBar title="Reports & Analytics" searchPlaceholder="Search logs..." />
@@ -21,17 +47,20 @@ export function ReportsPage() {
               <h3 className="font-headline-lg text-headline-lg text-on-surface">Analytics Overview</h3>
               <p className="text-label-md text-on-surface-variant">Track your campaign performance</p>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 border border-glass-stroke rounded-xl text-label-md hover:bg-surface-bright transition-all">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 border border-glass-stroke rounded-xl text-label-md hover:bg-surface-bright transition-all"
+            >
               <span className="material-symbols-outlined text-lg">download</span>
               Export Report
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StatCard label="Total Sent" value="48,292" icon="send" />
-            <StatCard label="Delivery Rate" value="98.4%" icon="check_circle" />
-            <StatCard label="Open Rate" value="42.7%" icon="mark_email_read" />
-            <StatCard label="Click Rate" value="12.3%" icon="ads_click" />
+            <StatCard label="Total Sent" value={stats.totalSent.toLocaleString()} icon="send" />
+            <StatCard label="Delivery Rate" value={`${stats.deliveryRate}%`} icon="check_circle" />
+            <StatCard label="Active Campaigns" value={String(stats.totalCampaigns - stats.completedCampaigns)} icon="campaign" />
+            <StatCard label="Completed" value={String(stats.completedCampaigns)} icon="task_alt" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -101,7 +130,14 @@ export function ReportsPage() {
                       <td className="px-4 py-3 text-on-surface-variant font-label-md">{log.recipient}</td>
                       <td className="px-4 py-3 font-label-md">{log.event}</td>
                       <td className="px-4 py-3">
-                        <Badge status={log.status as "completed" | "active" | "failed" | "pending"} />
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                          log.status === "completed" ? "bg-green-500/10 border-green-500/20 text-green-400" :
+                          log.status === "active" ? "bg-green-500/10 border-green-500/20 text-green-400" :
+                          log.status === "failed" ? "bg-error/10 border-error/20 text-error" :
+                          "bg-surface-bright/30 border-glass-stroke text-on-surface-variant"
+                        }`}>
+                          {log.status}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-label-sm text-on-surface-variant">{log.time}</td>
                     </tr>
