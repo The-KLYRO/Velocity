@@ -1,22 +1,134 @@
 use serde::{Deserialize, Serialize};
 use tauri::command;
+use tauri::State;
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExportResult {
-    pub success: bool,
-    pub file_path: String,
-    pub message: String,
+pub struct LogData {
+    pub id: String,
+    pub campaign_id: String,
+    pub recipient_id: String,
+    pub event: String,
+    pub status: String,
+    pub timestamp: String,
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DashboardStats {
+    pub total_sent: i64,
+    pub total_recipients: i64,
+    pub active_campaigns: i64,
+    pub completed_campaigns: i64,
+    pub delivery_rate: f64,
 }
 
 #[command]
-pub async fn export_logs(
+pub async fn get_campaign_logs(
+    state: State<'_, AppState>,
     campaign_id: Option<String>,
-    format: String,
-) -> Result<ExportResult, String> {
-    // TODO: Implement log export logic
-    Ok(ExportResult {
-        success: true,
-        file_path: String::new(),
-        message: format!("Logs exported in {} format", format),
+) -> Result<Vec<LogData>, String> {
+    let pool = state.get_pool().await?;
+
+    let rows: Vec<(String, String, String, String, String, String, Option<String>)> = match campaign_id {
+        Some(cid) => {
+            sqlx::query_as(
+                "SELECT id, campaign_id, recipient_id, event, status, timestamp, details FROM logs WHERE campaign_id = ? ORDER BY timestamp DESC"
+            )
+            .bind(&cid)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| format!("Failed to fetch logs: {}", e))?
+        }
+        None => {
+            sqlx::query_as(
+                "SELECT id, campaign_id, recipient_id, event, status, timestamp, details FROM logs ORDER BY timestamp DESC LIMIT 100"
+            )
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| format!("Failed to fetch logs: {}", e))?
+        }
+    };
+
+    Ok(rows.into_iter().map(|r| LogData {
+        id: r.0,
+        campaign_id: r.1,
+        recipient_id: r.2,
+        event: r.3,
+        status: r.4,
+        timestamp: r.5,
+        details: r.6,
+    }).collect())
+}
+
+#[command]
+pub async fn export_logs_csv(
+    state: State<'_, AppState>,
+    campaign_id: Option<String>,
+) -> Result<String, String> {
+    let logs = get_campaign_logs(state, campaign_id).await?;
+
+    let mut wtr = csv::Writer::from_writer(vec![]);
+    wtr.write_record(&["id", "campaign_id", "recipient_id", "event", "status", "timestamp", "details"])
+        .map_err(|e| format!("Failed to write CSV header: {}", e))?;
+
+    for log in &logs {
+        wtr.write_record(&[
+            &log.id,
+            &log.campaign_id,
+            &log.recipient_id,
+            &log.event,
+            &log.status,
+            &log.timestamp,
+            log.details.as_deref().unwrap_or(""),
+        ])
+        .map_err(|e| format!("Failed to write CSV record: {}", e))?;
+    }
+
+    let data = String::from_utf8(wtr.into_inner().map_err(|e| format!("Failed to finalize CSV: {}", e))?)
+        .map_err(|e| format!("Failed to convert CSV to string: {}", e))?;
+
+    Ok(data)
+}
+
+#[command]
+pub async fn get_dashboard_stats(
+    state: State<'_, AppState>,
+) -> Result<DashboardStats, String> {
+    let pool = state.get_pool().await?;
+
+    let campaign_stats: (i64, i64, i64) = sqlx::query_as(
+        "SELECT COALESCE(SUM(sent_count), 0), COALESCE(SUM(total_count), 0), COUNT(*) FROM campaigns"
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to get campaign stats: {}", e))?;
+
+    let active: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM campaigns WHERE status = 'running' OR status = 'paused'"
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to get active campaigns: {}", e))?;
+
+    let completed: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM campaigns WHERE status = 'completed'"
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to get completed campaigns: {}", e))?;
+
+    let delivery_rate = if campaign_stats.1 > 0 {
+        (campaign_stats.0 as f64 / campaign_stats.1 as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(DashboardStats {
+        total_sent: campaign_stats.0,
+        total_recipients: campaign_stats.1,
+        active_campaigns: active.0,
+        completed_campaigns: completed.0,
+        delivery_rate,
     })
 }

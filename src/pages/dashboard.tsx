@@ -1,19 +1,49 @@
 import { TopBar } from "../layout/topbar";
 import { GlassCard, StatCard, ProgressBar } from "../components/ui";
-
-const mockActivity = [
-  { event: "Summer Sale Launch", target: "8,241 contacts", status: "completed", time: "2 mins ago" },
-  { event: "List Import: Q3 Leads", target: "q3_leads_v2.csv", status: "active", time: "15 mins ago" },
-  { event: "SMTP Bounce Error", target: "smtp.cluster-01", status: "failed", time: "42 mins ago" },
-];
-
-const mockQueue = [
-  { name: "Newsletter-Auto_77", sent: 4200, total: 10000, progress: 42 },
-  { name: "Onboarding_Sequence_01", sent: 890, total: 1200, progress: 74 },
-  { name: "Re-engagement_Blast", sent: 0, total: 5000, progress: 0, waiting: true },
-];
+import { useCampaignStore } from "../stores/campaign-store";
+import { useSendingStore } from "../stores/sending-store";
+import { useQueueStore } from "../stores/queue-store";
 
 export function DashboardPage() {
+  const campaigns = useCampaignStore((s) => s.campaigns);
+  const queueItems = useQueueStore((s) => s.items);
+  const sending = useSendingStore((s) => s);
+
+  const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0);
+  const totalTarget = campaigns.reduce((sum, c) => sum + c.totalCount, 0);
+  const deliveryRate = totalTarget > 0 ? ((totalSent / totalTarget) * 100).toFixed(1) : "0";
+  const quotaUsed = sending.isSending ? sending.sentCount : totalSent;
+  const dailyLimit = 50000;
+  const quotaRemaining = Math.max(0, dailyLimit - quotaUsed);
+  const quotaPercent = Math.round(((dailyLimit - quotaRemaining) / dailyLimit) * 100);
+
+  const recentActivity = [...campaigns]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 3)
+    .map((c) => ({
+      event: c.name,
+      target: `${c.totalCount.toLocaleString()} contacts`,
+      status: c.status === "completed" ? "completed" : c.status === "failed" ? "failed" : "active",
+      time: c.createdAt.toLocaleDateString(),
+    }));
+
+  const runningCampaigns = campaigns.filter(
+    (c) => c.status === "running" || c.status === "paused"
+  );
+
+  const queueDisplay = runningCampaigns.map((c) => {
+    const campaignQueueItems = queueItems.filter((q) => q.campaignId === c.id);
+    const hasPending = campaignQueueItems.some((q) => q.status === "pending");
+    const progress = c.totalCount > 0 ? Math.round((c.sentCount / c.totalCount) * 100) : 0;
+    return {
+      name: c.name,
+      sent: c.sentCount,
+      total: c.totalCount,
+      progress,
+      waiting: c.status === "paused" || hasPending,
+    };
+  });
+
   return (
     <div className="flex flex-col h-full">
       <TopBar title="Bulk Management" searchPlaceholder="Search campaigns, logs, or recipients..." />
@@ -22,8 +52,8 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <StatCard
             label="Today's Sends"
-            value="12,842"
-            trend="+12% vs yesterday"
+            value={totalSent.toLocaleString()}
+            trend={`${campaigns.length} campaigns`}
             icon="outbox"
           />
           <GlassCard className="flex items-center justify-between">
@@ -32,9 +62,9 @@ export function DashboardPage() {
                 Quota Remaining
               </span>
               <div className="flex flex-col">
-                <span className="font-display-lg text-on-surface">37,158</span>
+                <span className="font-display-lg text-on-surface">{quotaRemaining.toLocaleString()}</span>
                 <span className="text-label-sm text-on-surface-variant">
-                  of 50,000 daily limit
+                  of {dailyLimit.toLocaleString()} daily limit
                 </span>
               </div>
             </div>
@@ -48,20 +78,20 @@ export function DashboardPage() {
                   fill="none"
                   r="16"
                   strokeDasharray="100"
-                  strokeDashoffset="25"
+                  strokeDashoffset={100 - quotaPercent}
                   strokeLinecap="round"
                   strokeWidth="3"
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center font-label-sm text-primary">
-                74%
+                {quotaPercent}%
               </div>
             </div>
           </GlassCard>
           <StatCard
             label="Delivery Rate"
-            value="98.2%"
-            trend="+0.4%"
+            value={`${deliveryRate}%`}
+            trend={`${totalTarget.toLocaleString()} total`}
             icon="check_circle"
           />
         </div>
@@ -135,7 +165,7 @@ export function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {mockActivity.map((item, i) => (
+                  {recentActivity.map((item, i) => (
                     <tr key={i} className="group hover:bg-surface-elevated transition-all rounded-lg">
                       <td className="px-4 py-4 rounded-l-lg">
                         <div className="flex items-center gap-3">
@@ -181,7 +211,7 @@ export function DashboardPage() {
               </span>
             </div>
             <div className="p-6 flex-1 space-y-6">
-              {mockQueue.map((item, i) => (
+              {queueDisplay.map((item, i) => (
                 <div key={i} className={`flex flex-col gap-3 ${item.waiting ? "opacity-60" : ""}`}>
                   <div className="flex justify-between items-end">
                     <div className="flex flex-col">

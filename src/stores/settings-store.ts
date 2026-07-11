@@ -4,6 +4,7 @@ interface SettingsState {
   delayMs: number;
   retryCount: number;
   dailyLimit: number;
+  batchSize: number;
   notifications: {
     campaignCompleted: boolean;
     bounceAlerts: boolean;
@@ -17,6 +18,7 @@ interface SettingsState {
   setDelayMs: (ms: number) => void;
   setRetryCount: (count: number) => void;
   setDailyLimit: (limit: number) => void;
+  setBatchSize: (size: number) => void;
   toggleNotification: (key: keyof SettingsState["notifications"]) => void;
   toggleTracking: (key: keyof SettingsState["tracking"]) => void;
   setSignature: (signature: string) => void;
@@ -26,6 +28,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   delayMs: 1000,
   retryCount: 3,
   dailyLimit: 500,
+  batchSize: 50,
   notifications: {
     campaignCompleted: true,
     bounceAlerts: true,
@@ -35,10 +38,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     openTracking: true,
     clickTracking: true,
   },
-  signature: "",
+  signature: "Best regards,\nYour Name\nLumina Velocity Team",
   setDelayMs: (ms) => set({ delayMs: ms }),
   setRetryCount: (count) => set({ retryCount: count }),
   setDailyLimit: (limit) => set({ dailyLimit: limit }),
+  setBatchSize: (size) => set({ batchSize: size }),
   toggleNotification: (key) =>
     set((state) => ({
       notifications: {

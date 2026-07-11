@@ -5,15 +5,44 @@ pub mod errors;
 pub mod models;
 pub mod state;
 
+use state::AppState;
+use tauri::Manager;
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
+        .manage(AppState::new())
+        .setup(|app| {
             tracing_subscriber::fmt::init();
+            let state = app.state::<AppState>();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                state.init_db().await.expect("Failed to initialize database");
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::greet,
+            commands::smtp::test_smtp_connection,
+            commands::smtp::connect_smtp,
+            commands::smtp::disconnect_smtp,
+            commands::campaign::create_campaign,
+            commands::campaign::start_campaign,
+            commands::campaign::pause_campaign,
+            commands::campaign::resume_campaign,
+            commands::campaign::get_campaigns,
+            commands::campaign::delete_campaign,
+            commands::recipients::import_recipients_csv,
+            commands::recipients::get_recipients,
+            commands::recipients::delete_recipients,
+            commands::recipients::add_recipient,
+            commands::templates::create_template,
+            commands::templates::update_template,
+            commands::templates::delete_template,
+            commands::templates::get_templates,
+            commands::reports::get_campaign_logs,
+            commands::reports::export_logs_csv,
+            commands::reports::get_dashboard_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
