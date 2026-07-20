@@ -58,6 +58,31 @@ pub async fn save_smtp_account(
     retry_count: i32,
     is_connected: Option<bool>,
 ) -> Result<SmtpAccountData, String> {
+    if email.trim().is_empty() {
+        return Err("Email address is required".to_string());
+    }
+    if !email.contains('@') || !email.contains('.') {
+        return Err("Invalid email address format".to_string());
+    }
+    if host.trim().is_empty() {
+        return Err("SMTP host is required".to_string());
+    }
+    if port == 0 {
+        return Err("Port must be between 1 and 65535".to_string());
+    }
+    if !["tls", "starttls", "none"].contains(&encryption.as_str()) {
+        return Err("Encryption must be tls, starttls, or none".to_string());
+    }
+    if daily_limit < 0 {
+        return Err("Daily limit cannot be negative".to_string());
+    }
+    if retry_count < 0 {
+        return Err("Retry count cannot be negative".to_string());
+    }
+    if id.is_none() && password.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("Password is required for new accounts".to_string());
+    }
+
     let pool = state.get_pool().await?;
 
     let encrypted_password = password.map(|p| crypto::encrypt(&p));

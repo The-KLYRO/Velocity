@@ -90,7 +90,7 @@ export function ComposePage() {
         `<p>Hi {'{{first_name}}'},</p>\n<br />\n<p>\n  I noticed that your company, {'{{company}}'}, has been expanding its reach lately.\n  We've developed a high-velocity solution at Velocity that could streamline your\n  operations significantly.\n</p>\n<br />\n<p>Would you be open to a 5-minute chat next Tuesday?</p>\n<br />\n<p>${signature.replace(/\n/g, "<br />")}</p>`
       );
     }
-  }, [signature]);
+  }, [body, signature]);
 
   useEffect(() => {
     if (bodyRef.current && bodyRef.current.innerHTML !== body) {

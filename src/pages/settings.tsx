@@ -3,7 +3,7 @@ import { Button, Input, Select, Toast } from "../components/ui";
 import { useSettingsStore } from "../stores/settings-store";
 import { useSmtpStore } from "../stores/smtp-store";
 import { getSmtpAccountPassword } from "../lib/tauri-api";
-import type { SmtpEncryption } from "../types";
+import type { SmtpAccount, SmtpEncryption } from "../types";
 
 const encryptionOptions = [
   { value: "tls", label: "TLS/SSL" },
@@ -42,6 +42,7 @@ export function SettingsPage() {
     dailyLimit: "500",
   });
   const [testResults, setTestResults] = useState<Record<string, { testing: boolean; result: "success" | "error" | null }>>({});
+  const [editingAccounts, setEditingAccounts] = useState<Record<string, Partial<SmtpAccount>>>({});
 
   useEffect(() => {
     fetchSettings();
@@ -86,40 +87,124 @@ export function SettingsPage() {
     }
   };
 
-  const handleAddAccount = async () => {
-    if (!newAccount.email || !newAccount.host) return;
-    const saved = await addAccount({
-      email: newAccount.email,
-      password: newAccount.password,
-      host: newAccount.host,
-      port: Number(newAccount.port) || 587,
-      encryption: newAccount.encryption,
-      dailyLimit: Number(newAccount.dailyLimit) || 500,
-      delayMs: Number(newAccount.delayMs) || 1000,
-      retryCount: Number(newAccount.retryCount) || 3,
-      isConnected: false,
-    });
-    if (saved) {
-      await fetchAccounts();
-      setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
-      showToastMessage("Account added successfully");
+  const validateNewAccount = (): string | null => {
+    if (!newAccount.email.trim()) return "Email address is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAccount.email)) return "Invalid email address format";
+    if (!newAccount.password.trim()) return "Password is required";
+    if (!newAccount.host.trim()) return "SMTP host is required";
+    const port = Number(newAccount.port);
+    if (!port || port < 1 || port > 65535) return "Port must be between 1 and 65535";
+    const dailyLimit = Number(newAccount.dailyLimit);
+    if (isNaN(dailyLimit) || dailyLimit < 0) return "Daily limit must be a positive number";
+    const retryCount = Number(newAccount.retryCount);
+    if (isNaN(retryCount) || retryCount < 0) return "Retry count must be a positive number";
+    const delayMs = Number(newAccount.delayMs);
+    if (isNaN(delayMs) || delayMs < 0) return "Delay must be a positive number";
+    return null;
+  };
 
-      try {
-        const result = await testConnection(newAccount.email, newAccount.password, newAccount.host, Number(newAccount.port) || 587);
-        if (result.connected) {
-          await updateAccount(saved.id, { isConnected: true });
-          await fetchAccounts();
-          showToastMessage("Account connected successfully");
-        }
-      } catch {
-        // connection test failed silently — account stays disconnected
+  const handleAddAccount = async () => {
+    const validationError = validateNewAccount();
+    if (validationError) {
+      showToastMessage(validationError, "error");
+      return;
+    }
+    const email = newAccount.email.trim();
+    const password = newAccount.password;
+    const host = newAccount.host.trim();
+    const port = Number(newAccount.port) || 587;
+    const encryption = newAccount.encryption;
+    const dailyLimit = Number(newAccount.dailyLimit) || 500;
+    const delayMs = Number(newAccount.delayMs) || 1000;
+    const retryCount = Number(newAccount.retryCount) || 3;
+
+    const saved = await addAccount({ email, password, host, port, encryption, dailyLimit, delayMs, retryCount, isConnected: false });
+    if (!saved) {
+      showToastMessage("Failed to add account. Please check your details.", "error");
+      return;
+    }
+    await fetchAccounts();
+    setNewAccount({ email: "", password: "", host: "", port: "587", encryption: "starttls", delayMs: "1000", retryCount: "3", dailyLimit: "500" });
+    setTestResults((prev) => ({ ...prev, [saved.id]: { testing: true, result: null } }));
+
+    try {
+      const result = await testConnection(email, password, host, port);
+      if (result.connected) {
+        await updateAccount(saved.id, { isConnected: true });
+        await fetchAccounts();
+        setTestResults((prev) => ({ ...prev, [saved.id]: { testing: false, result: "success" } }));
+        showToastMessage("Account added and connected successfully", "success");
+      } else {
+        setTestResults((prev) => ({ ...prev, [saved.id]: { testing: false, result: "error" } }));
+        showToastMessage("Account saved but connection failed: " + result.message, "error");
       }
+    } catch {
+      setTestResults((prev) => ({ ...prev, [saved.id]: { testing: false, result: "error" } }));
+      showToastMessage("Account saved but connection test failed", "error");
     }
   };
 
   const handleDeleteAccount = async (id: string) => {
     await removeAccount(id);
     showToastMessage("Account deleted", "info");
+  };
+
+  const handleUpdateAccount = async (id: string) => {
+    const edits = editingAccounts[id];
+    if (!edits) {
+      showToastMessage("No changes to save", "info");
+      return;
+    }
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return;
+
+    if (edits.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(edits.email)) {
+      showToastMessage("Invalid email address format", "error");
+      return;
+    }
+    if (edits.host !== undefined && !edits.host.trim()) {
+      showToastMessage("SMTP host cannot be empty", "error");
+      return;
+    }
+    if (edits.port !== undefined && (edits.port < 1 || edits.port > 65535)) {
+      showToastMessage("Port must be between 1 and 65535", "error");
+      return;
+    }
+
+    const updatedEmail = (edits.email as string) ?? account.email;
+    const updatedHost = (edits.host as string) ?? account.host;
+    const updatedPort = edits.port ?? account.port;
+
+    await updateAccount(id, edits);
+    setEditingAccounts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+
+    setTestResults((prev) => ({ ...prev, [id]: { testing: true, result: null } }));
+
+    try {
+      const password = await getSmtpAccountPassword(id);
+      const result = await testConnection(updatedEmail, password, updatedHost, updatedPort);
+      if (result.connected) {
+        await updateAccount(id, { isConnected: true });
+        await fetchAccounts();
+        setTestResults((prev) => ({ ...prev, [id]: { testing: false, result: "success" } }));
+        showToastMessage("Account updated and connected successfully", "success");
+      } else {
+        await updateAccount(id, { isConnected: false });
+        await fetchAccounts();
+        setTestResults((prev) => ({ ...prev, [id]: { testing: false, result: "error" } }));
+        showToastMessage("Account updated but connection failed: " + result.message, "error");
+      }
+    } catch {
+      setTestResults((prev) => ({ ...prev, [id]: { testing: false, result: "error" } }));
+      showToastMessage("Account updated but connection test failed", "error");
+    }
+  };
+
+  const updateEditingField = (id: string, field: string, value: string | number) => {
+    setEditingAccounts((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], [field]: value },
+    }));
   };
 
   return (
@@ -149,18 +234,47 @@ export function SettingsPage() {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <Input label="Email Address" type="email" defaultValue={account.email} />
-                  <Input label="SMTP Host" defaultValue={account.host} />
-                  <Input label="Port" type="number" defaultValue={String(account.port)} />
+                  <Input
+                    label="Email Address"
+                    type="email"
+                    value={editingAccounts[account.id]?.email ?? account.email}
+                    onChange={(e) => updateEditingField(account.id, "email", e.target.value)}
+                  />
+                  <Input
+                    label="SMTP Host"
+                    value={editingAccounts[account.id]?.host ?? account.host}
+                    onChange={(e) => updateEditingField(account.id, "host", e.target.value)}
+                  />
+                  <Input
+                    label="Port"
+                    type="number"
+                    value={String(editingAccounts[account.id]?.port ?? account.port)}
+                    onChange={(e) => updateEditingField(account.id, "port", Number(e.target.value))}
+                  />
                   <Select
                     label="Encryption"
-                    value={account.encryption}
-                    onChange={() => {}}
+                    value={editingAccounts[account.id]?.encryption ?? account.encryption}
+                    onChange={(val) => updateEditingField(account.id, "encryption", val)}
                     options={encryptionOptions}
                   />
-                  <Input label="Delay Between Emails (ms)" type="number" defaultValue={String(account.delayMs)} />
-                  <Input label="Retry Count" type="number" defaultValue={String(account.retryCount)} />
-                  <Input label="Daily Send Limit" type="number" defaultValue={String(account.dailyLimit)} />
+                  <Input
+                    label="Delay Between Emails (ms)"
+                    type="number"
+                    value={String(editingAccounts[account.id]?.delayMs ?? account.delayMs)}
+                    onChange={(e) => updateEditingField(account.id, "delayMs", Number(e.target.value))}
+                  />
+                  <Input
+                    label="Retry Count"
+                    type="number"
+                    value={String(editingAccounts[account.id]?.retryCount ?? account.retryCount)}
+                    onChange={(e) => updateEditingField(account.id, "retryCount", Number(e.target.value))}
+                  />
+                  <Input
+                    label="Daily Send Limit"
+                    type="number"
+                    value={String(editingAccounts[account.id]?.dailyLimit ?? account.dailyLimit)}
+                    onChange={(e) => updateEditingField(account.id, "dailyLimit", Number(e.target.value))}
+                  />
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--stroke0)" }}>
@@ -169,7 +283,7 @@ export function SettingsPage() {
                   </Button>
                   <div style={{ display: "flex", gap: 8 }}>
                     <Button variant="danger" onClick={() => handleDeleteAccount(account.id)}>Delete</Button>
-                    <Button onClick={() => showToastMessage("Changes saved")}>Save Changes</Button>
+                    <Button onClick={() => handleUpdateAccount(account.id)}>Save Changes</Button>
                   </div>
                 </div>
               </div>
