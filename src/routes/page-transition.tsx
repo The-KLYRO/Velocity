@@ -9,6 +9,7 @@ interface NavContext {
 
 const NavContext = createContext<NavContext>({ direction: null, setDirection: () => {} });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useNavDirection() {
   return useContext(NavContext);
 }

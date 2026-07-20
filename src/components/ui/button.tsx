@@ -13,6 +13,13 @@ const sizes = {
   lg: "px-5 py-3 text-label-md",
 };
 
+const variants = {
+  primary: "",
+  secondary: "border border-[var(--stroke0)] bg-transparent hover:bg-[rgba(255,255,255,0.04)]",
+  ghost: "bg-transparent hover:bg-[rgba(255,255,255,0.04)]",
+  danger: "text-[var(--bad)] hover:bg-[rgba(255,59,48,0.08)]",
+};
+
 export function Button({
   variant = "primary",
   size = "md",
@@ -23,7 +30,7 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`pillBtn transition-all active:scale-95 ${sizes[size]} ${className}`}
+      className={`pillBtn transition-all active:scale-95 ${sizes[size]} ${variants[variant]} ${className}`}
       type="button"
       {...props}
     >
